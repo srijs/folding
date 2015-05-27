@@ -54,7 +54,8 @@ putState :: Putter (Fold a b)
 putState (Fold _ init _ put _) = put init
 
 getState :: Fold a b -> Get (Fold a b)
-getState (Fold step _ finalize put get) = fmap (\init -> Fold step init finalize put get) get
+getState (Fold step _ finalize put get)
+  = fmap (\init -> Fold step init finalize put get) get
 
 serializeState :: Fold a b -> ByteString
 serializeState = runPut . putState
@@ -108,6 +109,18 @@ zip (Fold stepL initL finalizeL putL getL)
   = Fold step init finalize put get
   where
     step (xL, xR) (aL, aR) = (stepL xL aL, stepR xR aR)
+    init = (initL, initR)
+    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
+    put = putTwoOf putL putR
+    get = getTwoOf getL getR
+
+choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
+choose (Fold stepL initL finalizeL putL getL)
+       (Fold stepR initR finalizeR putR getR)
+  = Fold step init finalize put get
+  where
+    step (xL, xR) (Left a) = (stepL xL a, xR)
+    step (xL, xR) (Right a') = (xL, stepR xR a')
     init = (initL, initR)
     finalize (xL, xR) = (finalizeL xL, finalizeR xR)
     put = putTwoOf putL putR
