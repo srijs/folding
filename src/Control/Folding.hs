@@ -2,7 +2,7 @@
 
 module Control.Folding where
 
-import Prelude hiding (any, all, and, or, sum)
+import Prelude hiding (any, all, and, or, sum, zip, length)
 
 import Data.Serialize
 import Data.ByteString (ByteString)
@@ -11,6 +11,7 @@ import Data.Monoid
 import Data.Functor.Contravariant
 import Data.Profunctor
 
+import Control.Arrow
 import Control.Applicative
 import Control.Monad
 import Control.Comonad
@@ -25,8 +26,10 @@ data Fold a b = forall x. Fold
 newtype Cofold b a = Cofold { getFold :: Fold a b }
 
 instance Profunctor Fold where
-  lmap f (Fold step init finalize put get) = Fold (\x -> step x . f) init finalize put get
-  rmap f (Fold step init finalize put get) = Fold step init (f . finalize) put get
+  lmap f (Fold step init finalize put get)
+    = Fold (\x -> step x . f) init finalize put get
+  rmap f (Fold step init finalize put get)
+    = Fold step init (f . finalize) put get
 
 instance Functor (Fold a) where fmap = rmap
 
@@ -62,15 +65,46 @@ unserializeState = runGet . getState
 -- * Running
 
 runList :: Fold a b -> [a] -> Fold a b
-runList (Fold step init finalize put get) as = Fold step (foldl step init as) finalize put get
+runList (Fold step init finalize put get) as
+  = Fold step (foldl step init as) finalize put get
 
--- * Transformations
+-- * Construction
 
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
 fold step init = Fold step init id put get
 
-pair :: Fold a b -> Fold c d -> Fold (a, c) (b, d)
-pair (Fold stepL initL finalizeL putL getL) (Fold stepR initR finalizeR putR getR)
+foldWithIndex :: Serialize b => (Int -> b -> a -> b) -> b -> Fold a b
+foldWithIndex f b = Fold step (0, b) snd (putTwoOf put put) (getTwoOf get get)
+  where step (idx, b) a = (idx + 1, f idx b a)
+
+-- * Composition
+
+compose :: Fold a b -> Fold b c -> Fold a c
+compose foldL = rmap snd . composeR foldL
+
+composeL :: Fold a b -> Fold (a, b) c -> Fold a c
+composeL foldL = rmap snd . composeLR foldL
+
+composeR :: Fold a b -> Fold b c -> Fold a (b, c)
+composeR foldL = composeLR foldL . lmap snd
+
+composeLR :: Fold a b -> Fold (a, b) c -> Fold a (b, c)
+composeLR (Fold stepL initL finalizeL putL getL)
+          (Fold stepR initR finalizeR putR getR)
+  = Fold step init finalize put get
+  where
+    step (xL, xR) a = let xL' = stepL xL a in (xL', stepR xR (a, finalizeL xL'))
+    init = (initL, initR)
+    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
+    put = putTwoOf putL putR
+    get = getTwoOf getL getR
+
+-- * Arrow-like
+
+-- Arrow (***)
+zip :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
+zip (Fold stepL initL finalizeL putL getL)
+    (Fold stepR initR finalizeR putR getR)
   = Fold step init finalize put get
   where
     step (xL, xR) (aL, aR) = (stepL xL aL, stepR xR aR)
@@ -78,6 +112,20 @@ pair (Fold stepL initL finalizeL putL getL) (Fold stepR initR finalizeR putR get
     finalize (xL, xR) = (finalizeL xL, finalizeR xR)
     put = putTwoOf putL putR
     get = getTwoOf getL getR
+
+-- Arrow (&&&)
+split :: Fold a b -> Fold a b' -> Fold a (b, b')
+split (Fold stepL initL finalizeL putL getL)
+      (Fold stepR initR finalizeR putR getR)
+  = Fold step init finalize put get
+  where
+    init = (initL, initR)
+    step (xL, xR) a = (stepL xL a, stepR xR a)
+    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
+    put = putTwoOf putL putR
+    get = getTwoOf getL getR
+
+-- * Transformation
 
 head :: Serialize a => Fold a (Maybe a)
 head = fold step Nothing
