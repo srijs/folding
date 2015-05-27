@@ -115,15 +115,7 @@ zip (Fold stepL initL finalizeL putL getL)
 
 -- Arrow (&&&)
 split :: Fold a b -> Fold a b' -> Fold a (b, b')
-split (Fold stepL initL finalizeL putL getL)
-      (Fold stepR initR finalizeR putR getR)
-  = Fold step init finalize put get
-  where
-    init = (initL, initR)
-    step (xL, xR) a = (stepL xL a, stepR xR a)
-    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
-    put = putTwoOf putL putR
-    get = getTwoOf getL getR
+split foldL = lmap (\a -> (a, a)) . zip foldL
 
 -- * Transformation
 
