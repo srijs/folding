@@ -4,29 +4,46 @@ module Control.Folding where
 
 import Prelude hiding (any, all, and, or, sum)
 
-import Data.Monoid
-import Data.Profunctor
 import Data.Serialize
 import Data.ByteString (ByteString)
 
+import Data.Monoid
+import Data.Functor.Contravariant
+import Data.Profunctor
+
+import Control.Applicative
+import Control.Monad
 import Control.Comonad
 
 data Fold a b = forall x. Fold
-  (x -> a -> x) -- step function
-  x -- initial
-  (x -> b) -- extract
+  (x -> a -> x) -- step
+  x -- init
+  (x -> b) -- finalize
   (Putter x) -- encode
   (Get x) -- decode
 
-instance Comonad (Fold a) where
-  extract (Fold _ init extract _ _) = extract init
-  extend f = wrap . f
+newtype Cofold b a = Cofold { getFold :: Fold a b }
 
 instance Profunctor Fold where
-  lmap f (Fold step init extract put get) = Fold (\x -> step x . f) init extract put get
-  rmap f (Fold step init extract put get) = Fold step init (f . extract) put get
+  lmap f (Fold step init finalize put get) = Fold (\x -> step x . f) init finalize put get
+  rmap f (Fold step init finalize put get) = Fold step init (f . finalize) put get
 
 instance Functor (Fold a) where fmap = rmap
+
+instance Contravariant (Cofold a) where
+  contramap f = Cofold . lmap f . getFold
+
+instance Applicative (Fold a) where
+  pure = return
+  (<*>) = ap
+
+instance Monad (Fold a) where
+  return b = Fold (const (const ())) () (const b) put get
+  (>>=) fold f = f (extract fold)
+
+instance Comonad (Fold a) where
+  extract (Fold _ init finalize _ _) = finalize init
+  extend f = return . f
 
 -- * State Serialization
 
@@ -34,7 +51,7 @@ putState :: Putter (Fold a b)
 putState (Fold _ init _ put _) = put init
 
 getState :: Fold a b -> Get (Fold a b)
-getState (Fold step _ extract put get) = fmap (\init -> Fold step init extract put get) get
+getState (Fold step _ finalize put get) = fmap (\init -> Fold step init finalize put get) get
 
 serializeState :: Fold a b -> ByteString
 serializeState = runPut . putState
@@ -45,23 +62,20 @@ unserializeState = runGet . getState
 -- * Running
 
 runList :: Fold a b -> [a] -> Fold a b
-runList (Fold step init extract put get) as = Fold step (foldl step init as) extract put get
+runList (Fold step init finalize put get) as = Fold step (foldl step init as) finalize put get
 
 -- * Transformations
-
-wrap :: forall a b. b -> Fold a b
-wrap b = Fold (const (const ())) () (const b) put get
 
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
 fold step init = Fold step init id put get
 
 pair :: Fold a b -> Fold c d -> Fold (a, c) (b, d)
-pair (Fold stepL initL extractL putL getL) (Fold stepR initR extractR putR getR)
-  = Fold step init extract put get
+pair (Fold stepL initL finalizeL putL getL) (Fold stepR initR finalizeR putR getR)
+  = Fold step init finalize put get
   where
     step (xL, xR) (aL, aR) = (stepL xL aL, stepR xR aR)
     init = (initL, initR)
-    extract (xL, xR) = (extractL xL, extractR xR)
+    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
     put = putTwoOf putL putR
     get = getTwoOf getL getR
 
