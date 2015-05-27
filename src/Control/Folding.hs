@@ -7,8 +7,9 @@ import Prelude hiding (any, all, and, or, sum)
 import Data.Monoid
 import Data.Profunctor
 import Data.Serialize
+import Data.ByteString (ByteString)
 
-import Control.Applicative
+import Control.Comonad
 
 data Fold a b = forall x. Fold
   (x -> a -> x) -- step function
@@ -16,6 +17,10 @@ data Fold a b = forall x. Fold
   (x -> b) -- extract
   (Putter x) -- encode
   (Get x) -- decode
+
+instance Comonad (Fold a) where
+  extract (Fold _ init extract _ _) = extract init
+  extend f = wrap . f
 
 instance Profunctor Fold where
   lmap f (Fold step init extract put get) = Fold (\x -> step x . f) init extract put get
@@ -31,10 +36,11 @@ putState (Fold _ init _ put _) = put init
 getState :: Fold a b -> Get (Fold a b)
 getState (Fold step _ extract put get) = fmap (\init -> Fold step init extract put get) get
 
--- * Inspection
+serializeState :: Fold a b -> ByteString
+serializeState = runPut . putState
 
-extract :: Fold a b -> b
-extract (Fold _ init extract _ _) = extract init
+unserializeState :: Fold a b -> ByteString -> Either String (Fold a b)
+unserializeState = runGet . getState
 
 -- * Running
 
@@ -42,6 +48,9 @@ runList :: Fold a b -> [a] -> Fold a b
 runList (Fold step init extract put get) as = Fold step (foldl step init as) extract put get
 
 -- * Transformations
+
+wrap :: forall a b. b -> Fold a b
+wrap b = Fold (const (const ())) () (const b) put get
 
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
 fold step init = Fold step init id put get
