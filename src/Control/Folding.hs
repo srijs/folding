@@ -14,6 +14,7 @@ import Data.Profunctor
 import Control.Arrow
 import Control.Applicative
 import Control.Monad
+import Control.Monad.Zip
 import Control.Comonad
 
 data Fold a b = forall x. Fold
@@ -43,6 +44,9 @@ instance Applicative (Fold a) where
 instance Monad (Fold a) where
   return b = Fold (const (const ())) () (const b) put get
   (>>=) fold f = f (extract fold)
+
+instance MonadZip (Fold a) where
+  mzip foldL = lmap (\a -> (a, a)) . zip foldL
 
 instance Comonad (Fold a) where
   extract (Fold _ init finalize _ _) = finalize init
@@ -100,9 +104,6 @@ composeLR (Fold stepL initL finalizeL putL getL)
     put = putTwoOf putL putR
     get = getTwoOf getL getR
 
--- * Arrow-like
-
--- Arrow (***)
 zip :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 zip (Fold stepL initL finalizeL putL getL)
     (Fold stepR initR finalizeR putR getR)
@@ -125,10 +126,6 @@ choose (Fold stepL initL finalizeL putL getL)
     finalize (xL, xR) = (finalizeL xL, finalizeR xR)
     put = putTwoOf putL putR
     get = getTwoOf getL getR
-
--- Arrow (&&&)
-split :: Fold a b -> Fold a b' -> Fold a (b, b')
-split foldL = lmap (\a -> (a, a)) . zip foldL
 
 -- * Transformation
 
