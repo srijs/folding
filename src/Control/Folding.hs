@@ -1,8 +1,8 @@
-{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ExistentialQuantification, MonadComprehensions #-}
 
 module Control.Folding where
 
-import Prelude hiding (any, all, and, or, sum, zip, length)
+import Prelude hiding (any, all, and, or, sum, zip, length, head)
 
 import Data.Serialize
 import Data.ByteString (ByteString)
@@ -43,7 +43,7 @@ instance Applicative (Fold a) where
 
 instance Monad (Fold a) where
   return b = Fold (const (const ())) () (const b) put get
-  (>>=) fold f = f (extract fold)
+  (>>=) fold f = rmap (extract . f) fold
 
 instance MonadZip (Fold a) where
   mzip foldL = lmap (\a -> (a, a)) . zip foldL
