@@ -78,6 +78,10 @@ runList (Fold step init finalize put get) as
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
 fold step init = Fold step init id put get
 
+fold1 :: Serialize a => (a -> a -> a) -> Fold a (Maybe a)
+fold1 step = fold (flip step') Nothing
+  where step' a = maybe (Just a) (Just . flip step a)
+
 foldWithIndex :: Serialize b => (Int -> b -> a -> b) -> b -> Fold a b
 foldWithIndex f b = Fold step (0, b) snd (putTwoOf put put) (getTwoOf get get)
   where step (idx, b) a = (idx + 1, f idx b a)
@@ -130,9 +134,7 @@ choose (Fold stepL initL finalizeL putL getL)
 -- * Transformation
 
 head :: Serialize a => Fold a (Maybe a)
-head = fold step Nothing
-  where step (Just a) = const (Just a)
-        step Nothing = Just
+head = fold1 const
 
 last :: Serialize a => Fold a (Maybe a)
 last = fold (const Just) Nothing
@@ -162,14 +164,10 @@ length :: Fold a Int
 length = lmap (const 1) sum
 
 maximum :: (Ord a, Serialize a) => Fold a (Maybe a)
-maximum = fold step Nothing
-  where step Nothing = Just
-        step (Just a) = Just . max a
+maximum = fold1 max
 
 minimum :: (Ord a, Serialize a) => Fold a (Maybe a)
-minimum = fold step Nothing
-  where step Nothing = Just
-        step (Just a) = Just . min a
+minimum = fold1 min
 
 elem :: Eq a => a -> Fold a Bool
 elem a = any (a==)
