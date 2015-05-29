@@ -85,6 +85,16 @@ processList :: Fold a b -> [a] -> Fold a b
 processList (Fold step init finalize put get) as
   = Fold step (foldl step init as) finalize put get
 
+scannify :: Fold a b -> Fold a [b]
+scannify (Fold step init finalize put get)
+  = Fold step' init' finalize' put' get'
+  where
+    step' (x:xs) a = step x a : x : xs
+    init' = [init]
+    finalize' = reverse . map finalize
+    put' = putListOf put
+    get' = getListOf get
+
 -- * Construction
 
 point :: b -> Fold a b
