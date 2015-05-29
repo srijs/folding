@@ -37,20 +37,29 @@ instance Functor (Fold a) where fmap = rmap
 instance Contravariant (Cofold a) where
   contramap f = Cofold . lmap f . getFold
 
-instance Applicative (Fold a) where
-  pure = return
+instance Serialize a => Applicative (Fold a) where
+  pure = point
   (<*>) = ap
 
-instance Monad (Fold a) where
-  return b = Fold (const (const ())) () (const b) put get
-  (>>=) fold f = rmap (extract . f) fold
+instance Serialize a => Monad (Fold a) where
+  return = point
+  (>>=) fold = join . flip rmap fold
+    where
+      join (Fold stepL initL finalizeL putL getL)
+        = Fold step' init' finalize' put' get'
+        where
+          step' (x, as) a = (stepL x a, a:as)
+          init' = (initL, [])
+          finalize' (x, as) = runList (finalizeL x) (reverse as)
+          put' = putTwoOf putL put
+          get' = getTwoOf getL get
 
-instance MonadZip (Fold a) where
-  mzip foldL = lmap (\a -> (a, a)) . zip foldL
+instance Serialize a => MonadZip (Fold a) where
+  mzip foldL = lmap (\a -> (a, a)) . combine foldL
 
 instance Comonad (Fold a) where
   extract (Fold _ init finalize _ _) = finalize init
-  extend f = return . f
+  extend f = point . f
 
 -- * State Serialization
 
@@ -69,11 +78,17 @@ unserializeState = runGet . getState
 
 -- * Running
 
-runList :: Fold a b -> [a] -> Fold a b
-runList (Fold step init finalize put get) as
+runList :: Fold a b -> [a] -> b
+runList fold = extract . processList fold
+
+processList :: Fold a b -> [a] -> Fold a b
+processList (Fold step init finalize put get) as
   = Fold step (foldl step init as) finalize put get
 
 -- * Construction
+
+point :: b -> Fold a b
+point b = Fold (const (const ())) () (const b) put get
 
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
 fold step init = Fold step init id put get
@@ -108,8 +123,8 @@ composeLR (Fold stepL initL finalizeL putL getL)
     put = putTwoOf putL putR
     get = getTwoOf getL getR
 
-zip :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-zip (Fold stepL initL finalizeL putL getL)
+combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
+combine (Fold stepL initL finalizeL putL getL)
     (Fold stepR initR finalizeR putR getR)
   = Fold step init finalize put get
   where
