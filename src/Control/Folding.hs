@@ -105,7 +105,7 @@ fold step init = Fold step init id put get
 
 fold1 :: Serialize a => (a -> a -> a) -> Fold a (Maybe a)
 fold1 step = fold (flip step') Nothing
-  where step' a = maybe (Just a) (Just . flip step a)
+  where step' a = Just . maybe a (flip step a)
 
 foldWithIndex :: Serialize b => (Int -> b -> a -> b) -> b -> Fold a b
 foldWithIndex f b = Fold step (0, b) snd (putTwoOf put put) (getTwoOf get get)
