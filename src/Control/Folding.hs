@@ -2,11 +2,16 @@
 
 module Control.Folding where
 
-import Prelude hiding (any, all, and, or, sum, zip, length, head)
+import Prelude hiding
+  ( any, all, and, or, sum
+  , zip, length, head, last
+  , maximum, maybe
+  )
 
 import Data.Serialize
 import Data.ByteString (ByteString)
 
+import Data.Maybe as Maybe
 import Data.Monoid
 import Data.Functor.Contravariant
 import Data.Profunctor
@@ -105,7 +110,7 @@ fold step init = Fold step init id put get
 
 fold1 :: Serialize a => (a -> a -> a) -> Fold a (Maybe a)
 fold1 step = fold (flip step') Nothing
-  where step' a = Just . maybe a (flip step a)
+  where step' a = Just . Maybe.maybe a (flip step a)
 
 foldWithIndex :: Serialize b => (Int -> b -> a -> b) -> b -> Fold a b
 foldWithIndex f b = Fold step (0, b) snd (putTwoOf put put) (getTwoOf get get)
@@ -155,6 +160,12 @@ choose (Fold stepL initL finalizeL putL getL)
     finalize (xL, xR) = (finalizeL xL, finalizeR xR)
     put = putTwoOf putL putR
     get = getTwoOf getL getR
+
+maybe :: Fold a b -> Fold (Maybe a) b
+maybe (Fold step init finalize putX getX)
+  = Fold step' init finalize putX getX
+  where
+    step' x = Maybe.maybe x (step x)
 
 -- * Transformation
 
