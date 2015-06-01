@@ -14,10 +14,11 @@ import Data.ByteString (ByteString)
 import Data.Maybe as Maybe
 import Data.Monoid
 import Data.Functor.Contravariant
+import Data.Bifunctor
+import Data.Biapplicative
 import Data.Profunctor
 import Data.Foldable (Foldable, foldl)
 
-import Control.Arrow
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Zip
@@ -137,7 +138,7 @@ composeLR (Fold stepL initL finalizeL putL getL)
   where
     step (xL, xR) a = let xL' = stepL xL a in (xL', stepR xR (a, finalizeL xL'))
     init = (initL, initR)
-    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
+    finalize = bimap finalizeL finalizeR
     put = putTwoOf putL putR
     get = getTwoOf getL getR
 
@@ -148,7 +149,7 @@ combine (Fold stepL initL finalizeL putL getL)
   where
     step (xL, xR) (aL, aR) = (stepL xL aL, stepR xR aR)
     init = (initL, initR)
-    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
+    finalize = bimap finalizeL finalizeR
     put = putTwoOf putL putR
     get = getTwoOf getL getR
 
@@ -160,7 +161,7 @@ choose (Fold stepL initL finalizeL putL getL)
     step (xL, xR) (Left a) = (stepL xL a, xR)
     step (xL, xR) (Right a') = (xL, stepR xR a')
     init = (initL, initR)
-    finalize (xL, xR) = (finalizeL xL, finalizeR xR)
+    finalize = bimap finalizeL finalizeR
     put = putTwoOf putL putR
     get = getTwoOf getL getR
 
