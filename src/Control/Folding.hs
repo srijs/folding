@@ -147,7 +147,7 @@ combine (Fold stepL initL finalizeL putL getL)
     (Fold stepR initR finalizeR putR getR)
   = Fold step init finalize put get
   where
-    step (xL, xR) (aL, aR) = (stepL xL aL, stepR xR aR)
+    step = (<<*>>) . bimap stepL stepR
     init = (initL, initR)
     finalize = bimap finalizeL finalizeR
     put = putTwoOf putL putR
