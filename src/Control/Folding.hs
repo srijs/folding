@@ -5,7 +5,7 @@ module Control.Folding where
 import Prelude hiding
   ( any, all, and, or, sum
   , zip, length, head, last
-  , maximum, maybe
+  , maximum, maybe, foldl
   )
 
 import Data.Serialize
@@ -15,12 +15,15 @@ import Data.Maybe as Maybe
 import Data.Monoid
 import Data.Functor.Contravariant
 import Data.Profunctor
+import Data.Foldable (Foldable, foldl)
 
 import Control.Arrow
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Zip
 import Control.Comonad
+
+import Control.Folding.Internal.SnocList
 
 data Fold a b = forall x. Fold
   (x -> a -> x) -- step
@@ -53,9 +56,9 @@ instance Serialize a => Monad (Fold a) where
       join (Fold stepL initL finalizeL putL getL)
         = Fold step' init' finalize' put' get'
         where
-          step' (x, as) a = (stepL x a, a:as)
-          init' = (initL, [])
-          finalize' (x, as) = runList (finalizeL x) (reverse as)
+          step' (x, as) a = (stepL x a, Snoc as a)
+          init' = (initL, Lin)
+          finalize' (x, as) = run (finalizeL x) as
           put' = putTwoOf putL put
           get' = getTwoOf getL get
 
@@ -83,11 +86,11 @@ unserializeState = runGet . getState
 
 -- * Running
 
-runList :: Fold a b -> [a] -> b
-runList fold = extract . processList fold
+run :: Foldable f => Fold a b -> f a -> b
+run fold = extract . process fold
 
-processList :: Fold a b -> [a] -> Fold a b
-processList (Fold step init finalize put get) as
+process :: Foldable f => Fold a b -> f a -> Fold a b
+process (Fold step init finalize put get) as
   = Fold step (foldl step init as) finalize put get
 
 scannify :: Fold a b -> Fold a [b]
