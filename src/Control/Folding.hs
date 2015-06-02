@@ -144,7 +144,7 @@ composeLR (Fold stepL initL finalizeL putL getL)
 
 combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combine (Fold stepL initL finalizeL putL getL)
-    (Fold stepR initR finalizeR putR getR)
+        (Fold stepR initR finalizeR putR getR)
   = Fold step init finalize put get
   where
     step = (<<*>>) . bimap stepL stepR
@@ -156,10 +156,9 @@ combine (Fold stepL initL finalizeL putL getL)
 choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
 choose (Fold stepL initL finalizeL putL getL)
        (Fold stepR initR finalizeR putR getR)
-  = Fold step init finalize put get
+  = Fold (flip step) init finalize put get
   where
-    step (xL, xR) (Left a) = (stepL xL a, xR)
-    step (xL, xR) (Right a') = (xL, stepR xR a')
+    step = either (first . flip stepL) (second . flip stepR)
     init = (initL, initR)
     finalize = bimap finalizeL finalizeR
     put = putTwoOf putL putR
