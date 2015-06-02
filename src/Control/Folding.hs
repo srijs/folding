@@ -123,24 +123,19 @@ foldWithIndex f b = Fold step (0, b) snd (putTwoOf put put) (getTwoOf get get)
 -- * Composition
 
 compose :: Fold a b -> Fold b c -> Fold a c
-compose foldL = rmap snd . composeR foldL
+compose foldL = rmap snd . compose' foldL
 
-composeL :: Fold a b -> Fold (a, b) c -> Fold a c
-composeL foldL = rmap snd . composeLR foldL
-
-composeR :: Fold a b -> Fold b c -> Fold a (b, c)
-composeR foldL = composeLR foldL . lmap snd
-
-composeLR :: Fold a b -> Fold (a, b) c -> Fold a (b, c)
-composeLR (Fold stepL initL finalizeL putL getL)
-          (Fold stepR initR finalizeR putR getR)
-  = Fold step init finalize put get
+compose' :: Fold a b -> Fold b c -> Fold a (b, c)
+compose' (Fold (flip -> stepL) initL finalizeL putL getL)
+         (Fold (flip -> stepR) initR finalizeR putR getR)
+  = Fold (flip step) init finalize put get
   where
-    step (xL, xR) a = let xL' = stepL xL a in (xL', stepR xR (a, finalizeL xL'))
-    init = (initL, initR)
+    step a = apply . first (stepL a)
+    init = apply (initL, initR)
     finalize = bimap finalizeL finalizeR
     put = putTwoOf putL putR
     get = getTwoOf getL getR
+    apply x = second (stepR (finalizeL (fst x))) x
 
 combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combine (Fold stepL initL finalizeL putL getL)
