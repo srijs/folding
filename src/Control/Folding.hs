@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, MonadComprehensions #-}
+{-# LANGUAGE ExistentialQuantification, MonadComprehensions, ViewPatterns #-}
 
 module Control.Folding where
 
@@ -154,11 +154,11 @@ combine (Fold stepL initL finalizeL putL getL)
     get = getTwoOf getL getR
 
 choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
-choose (Fold stepL initL finalizeL putL getL)
-       (Fold stepR initR finalizeR putR getR)
+choose (Fold (flip -> stepL) initL finalizeL putL getL)
+       (Fold (flip -> stepR) initR finalizeR putR getR)
   = Fold (flip step) init finalize put get
   where
-    step = either (first . flip stepL) (second . flip stepR)
+    step = either (first . stepL) (second . stepR)
     init = (initL, initR)
     finalize = bimap finalizeL finalizeR
     put = putTwoOf putL putR
