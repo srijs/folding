@@ -26,20 +26,18 @@ import Control.Comonad
 
 import Control.Folding.Internal.SnocList
 
-data Fold a b = forall x. Fold
+data Fold a b = forall x. Serialize x => Fold
   (x -> a -> x) -- step
   x -- init
   (x -> b) -- finalize
-  (Putter x) -- encode
-  (Get x) -- decode
 
 newtype Cofold b a = Cofold { getFold :: Fold a b }
 
 instance Profunctor Fold where
-  lmap f (Fold step init finalize put get)
-    = Fold (\x -> step x . f) init finalize put get
-  rmap f (Fold step init finalize put get)
-    = Fold step init (f . finalize) put get
+  lmap f (Fold step init finalize)
+    = Fold (\x -> step x . f) init finalize
+  rmap f (Fold step init finalize)
+    = Fold step init (f . finalize)
 
 instance Functor (Fold a) where fmap = rmap
 
@@ -54,30 +52,28 @@ instance Serialize a => Monad (Fold a) where
   return = point
   (>>=) fold = join . flip rmap fold
     where
-      join (Fold stepL initL finalizeL putL getL)
-        = Fold step' init' finalize' put' get'
+      join (Fold stepL initL finalizeL)
+        = Fold step' init' finalize'
         where
           step' (x, as) a = (stepL x a, Snoc as a)
           init' = (initL, Lin)
           finalize' (x, as) = run (finalizeL x) as
-          put' = putTwoOf putL put
-          get' = getTwoOf getL get
 
 instance Serialize a => MonadZip (Fold a) where
   mzip foldL = lmap (\a -> (a, a)) . combine foldL
 
 instance Comonad (Fold a) where
-  extract (Fold _ init finalize _ _) = finalize init
+  extract (Fold _ init finalize) = finalize init
   extend f = point . f
 
 -- * State Serialization
 
 putState :: Putter (Fold a b)
-putState (Fold _ init _ put _) = put init
+putState (Fold _ init _ ) = put init
 
 getState :: Fold a b -> Get (Fold a b)
-getState (Fold step _ finalize put get)
-  = fmap (\init -> Fold step init finalize put get) get
+getState (Fold step _ finalize)
+  = fmap (\init -> Fold step init finalize) get
 
 serializeState :: Fold a b -> ByteString
 serializeState = runPut . putState
@@ -91,33 +87,31 @@ run :: Foldable f => Fold a b -> f a -> b
 run fold = extract . process fold
 
 process :: Foldable f => Fold a b -> f a -> Fold a b
-process (Fold step init finalize put get) as
-  = Fold step (foldl step init as) finalize put get
+process (Fold step init finalize) as
+  = Fold step (foldl step init as) finalize
 
 scannify :: Fold a b -> Fold a [b]
-scannify (Fold step init finalize put get)
-  = Fold step' init' finalize' put' get'
+scannify (Fold step init finalize)
+  = Fold step' init' finalize'
   where
     step' (x:xs) a = step x a : x : xs
     init' = [init]
     finalize' = reverse . map finalize
-    put' = putListOf put
-    get' = getListOf get
 
 -- * Construction
 
 point :: b -> Fold a b
-point b = Fold (const (const ())) () (const b) put get
+point b = Fold (const (const ())) () (const b)
 
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
-fold step init = Fold step init id put get
+fold step init = Fold step init id
 
 fold1 :: Serialize a => (a -> a -> a) -> Fold a (Maybe a)
 fold1 step = fold (flip step') Nothing
   where step' a = Just . Maybe.maybe a (flip step a)
 
 foldWithIndex :: Serialize b => (Int -> b -> a -> b) -> b -> Fold a b
-foldWithIndex f b = Fold step (0, b) snd (putTwoOf put put) (getTwoOf get get)
+foldWithIndex f b = Fold step (0, b) snd
   where step (idx, b) a = (idx + 1, f idx b a)
 
 -- * Composition
@@ -126,42 +120,36 @@ compose :: Fold a b -> Fold b c -> Fold a c
 compose foldL = rmap snd . compose' foldL
 
 compose' :: Fold a b -> Fold b c -> Fold a (b, c)
-compose' (Fold (flip -> stepL) initL finalizeL putL getL)
-         (Fold (flip -> stepR) initR finalizeR putR getR)
-  = Fold (flip step) init finalize put get
+compose' (Fold (flip -> stepL) initL finalizeL)
+         (Fold (flip -> stepR) initR finalizeR)
+  = Fold (flip step) init finalize
   where
     step a = apply . first (stepL a)
     init = apply (initL, initR)
     finalize = bimap finalizeL finalizeR
-    put = putTwoOf putL putR
-    get = getTwoOf getL getR
     apply x = second (stepR (finalizeL (fst x))) x
 
 combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combine (Fold stepL initL finalizeL putL getL)
-        (Fold stepR initR finalizeR putR getR)
-  = Fold step init finalize put get
+combine (Fold stepL initL finalizeL)
+        (Fold stepR initR finalizeR)
+  = Fold step init finalize
   where
     step = (<<*>>) . bimap stepL stepR
     init = (initL, initR)
     finalize = bimap finalizeL finalizeR
-    put = putTwoOf putL putR
-    get = getTwoOf getL getR
 
 choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
-choose (Fold (flip -> stepL) initL finalizeL putL getL)
-       (Fold (flip -> stepR) initR finalizeR putR getR)
-  = Fold (flip step) init finalize put get
+choose (Fold (flip -> stepL) initL finalizeL)
+       (Fold (flip -> stepR) initR finalizeR)
+  = Fold (flip step) init finalize
   where
     step = either (first . stepL) (second . stepR)
     init = (initL, initR)
     finalize = bimap finalizeL finalizeR
-    put = putTwoOf putL putR
-    get = getTwoOf getL getR
 
 maybe :: Fold a b -> Fold (Maybe a) b
-maybe (Fold step init finalize putX getX)
-  = Fold step' init finalize putX getX
+maybe (Fold step init finalize)
+  = Fold step' init finalize
   where
     step' x = Maybe.maybe x (step x)
 
