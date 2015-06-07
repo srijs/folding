@@ -11,7 +11,7 @@ import Prelude hiding
 import Data.Serialize
 import Data.ByteString (ByteString)
 
-import Data.Maybe as Maybe
+import qualified Data.Maybe as Maybe
 import Data.Monoid
 import Data.Functor.Contravariant
 import Data.Bifunctor
@@ -156,13 +156,19 @@ choose (Fold (flip -> stepL) initL finalizeL)
     init = (initL, initR)
     finalize = bimap finalizeL finalizeR
 
+-- * Transformations
+
 maybe :: Fold a b -> Fold (Maybe a) b
 maybe (Fold step init finalize)
   = Fold step' init finalize
   where
     step' x = Maybe.maybe x (step x)
 
--- * Transformation
+filter :: (a -> Bool) -> Fold a b -> Fold a b
+filter p fold = lmap f (maybe fold)
+  where f a = if p a then Just a else Nothing
+
+-- * Folds
 
 head :: Serialize a => Fold a (Maybe a)
 head = fold1 const
