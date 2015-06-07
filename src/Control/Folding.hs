@@ -170,6 +170,9 @@ filter p fold = lmap f (maybe fold)
 
 -- * Folds
 
+concat :: (Monoid a, Serialize a) => Fold a a
+concat = fold mappend mempty
+
 head :: Serialize a => Fold a (Maybe a)
 head = fold1 const
 
