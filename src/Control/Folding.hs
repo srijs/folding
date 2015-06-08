@@ -11,6 +11,7 @@ import Prelude hiding
 import Data.Serialize
 import Data.ByteString (ByteString)
 
+import Data.Conduit (Sink, await)
 import qualified Data.Maybe as Maybe
 import Data.Monoid
 import Data.Functor.Contravariant
@@ -85,6 +86,14 @@ unserializeState = runGet . getState
 
 run :: Foldable f => Fold a b -> f a -> b
 run fold = extract . process fold
+
+sink :: Monad m => Fold a b -> Sink a m b
+sink fold = await >>= Maybe.maybe (return (extract fold))
+                                  (sink . processOne fold)
+
+processOne :: Fold a b -> a -> Fold a b
+processOne (Fold step init finalize) a
+  = Fold step (step init a) finalize
 
 process :: Foldable f => Fold a b -> f a -> Fold a b
 process (Fold step init finalize) as
