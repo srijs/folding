@@ -151,7 +151,7 @@ compose' (Fold (flip -> stepL) initL finalizeL)
   = Fold (flip step) init finalize
   where
     step a = apply . first (stepL a)
-    init = apply (initL, initR)
+    init = apply $ bipure initL initR
     finalize = bimap finalizeL finalizeR
     apply x = (second . stepR . finalizeL $ fst x) x
 
@@ -161,7 +161,7 @@ combine (Fold stepL initL finalizeL)
   = Fold step init finalize
   where
     step = (<<*>>) . bimap stepL stepR
-    init = (initL, initR)
+    init = bipure initL initR
     finalize = bimap finalizeL finalizeR
 
 choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
@@ -170,7 +170,7 @@ choose (Fold (flip -> stepL) initL finalizeL)
   = Fold (flip step) init finalize
   where
     step = either (first . stepL) (second . stepR)
-    init = (initL, initR)
+    init = bipure initL initR
     finalize = bimap finalizeL finalizeR
 
 -- * Transformations
