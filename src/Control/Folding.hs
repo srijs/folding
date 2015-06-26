@@ -45,9 +45,9 @@ instance Functor (Fold a) where fmap = rmap
 instance Contravariant (Cofold a) where
   contramap f = Cofold . lmap f . getFold
 
-instance Serialize a => Applicative (Fold a) where
+instance Applicative (Fold a) where
   pure = point
-  (<*>) = ap
+  (<*>) f = rmap (uncurry ($)) . zip f
 
 instance Serialize a => Monad (Fold a) where
   return = point
@@ -61,7 +61,7 @@ instance Serialize a => Monad (Fold a) where
           finalize' (x, as) = run (finalizeL x) as
 
 instance Serialize a => MonadZip (Fold a) where
-  mzip foldL = lmap (\a -> (a, a)) . combine foldL
+  mzip = zip
 
 instance Comonad (Fold a) where
   extract (Fold _ init finalize) = finalize init
@@ -133,6 +133,9 @@ foldM_ :: (Monad m, Serialize b, Serialize (m b)) =>
 foldM_ step init = rmap (>> return ()) (foldM step init)
 
 -- * Composition
+
+zip :: Fold a b -> Fold a b' -> Fold a (b, b')
+zip a = lmap (\a -> (a, a)) . combine a
 
 compose :: Fold a b -> Fold b c -> Fold a c
 compose foldL = rmap snd . compose' foldL
