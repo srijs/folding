@@ -129,12 +129,12 @@ foldWithIndex f b = Fold step (0, b) snd
   where step (idx, b) a = (idx + 1, f idx b a)
 
 foldM :: (Monad m, Serialize (m b)) =>
-         (b -> a -> m b) -> b -> Fold a (m b)
-foldM step init = Fold step' (return init) id
+         (b -> a -> m b) -> m b -> Fold a (m b)
+foldM step init = Fold step' init id
   where step' mb a = mb >>= flip step a
 
 foldM_ :: (Monad m, Serialize (m b)) =>
-          (b -> a -> m b) -> b -> Fold a (m ())
+          (b -> a -> m b) -> m b -> Fold a (m ())
 foldM_ step init = rmap (>> return ()) (foldM step init)
 
 -- * Composition
