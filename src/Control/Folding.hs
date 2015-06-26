@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, MonadComprehensions, ViewPatterns #-}
+{-# LANGUAGE ExistentialQuantification, MonadComprehensions, ViewPatterns, TypeOperators #-}
 
 module Control.Folding where
 
@@ -83,6 +83,9 @@ unserializeState :: Fold a b -> ByteString -> Either String (Fold a b)
 unserializeState = runGet . getState
 
 -- * Running
+
+fun :: Fold :-> (->)
+fun (Fold step init finalize) = finalize . step init
 
 run :: Foldable f => Fold a b -> f a -> b
 run fold = extract . process fold
