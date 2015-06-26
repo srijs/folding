@@ -32,6 +32,8 @@ data Fold a b = forall x. Serialize x => Fold
   x -- init
   (x -> b) -- finalize
 
+type Fold1 a b = Fold a (Maybe b)
+
 newtype Cofold b a = Cofold { getFold :: Fold a b }
 
 instance Profunctor Fold where
@@ -118,7 +120,7 @@ point b = Fold (const (const ())) () (const b)
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
 fold step init = Fold step init id
 
-fold1 :: Serialize a => (a -> a -> a) -> Fold a (Maybe a)
+fold1 :: Serialize a => (a -> a -> a) -> Fold1 a a
 fold1 step = fold (flip step') Nothing
   where step' a = Just . Maybe.maybe a (flip step a)
 
@@ -188,10 +190,10 @@ filter p fold = lmap f (maybe fold)
 concat :: (Monoid a, Serialize a) => Fold a a
 concat = fold mappend mempty
 
-head :: Serialize a => Fold a (Maybe a)
+head :: Serialize a => Fold1 a a
 head = fold1 const
 
-last :: Serialize a => Fold a (Maybe a)
+last :: Serialize a => Fold1 a a
 last = fold (const Just) Nothing
 
 and :: Fold Bool Bool
@@ -218,10 +220,10 @@ null = all (const False)
 length :: Fold a Int
 length = lmap (const 1) sum
 
-maximum :: (Ord a, Serialize a) => Fold a (Maybe a)
+maximum :: (Ord a, Serialize a) => Fold1 a a
 maximum = fold1 max
 
-minimum :: (Ord a, Serialize a) => Fold a (Maybe a)
+minimum :: (Ord a, Serialize a) => Fold1 a a
 minimum = fold1 min
 
 elem :: Eq a => a -> Fold a Bool
