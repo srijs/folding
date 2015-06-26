@@ -148,7 +148,7 @@ compose' (Fold (flip -> stepL) initL finalizeL)
     step a = apply . first (stepL a)
     init = apply (initL, initR)
     finalize = bimap finalizeL finalizeR
-    apply x = second (stepR (finalizeL (fst x))) x
+    apply x = (second . stepR . finalizeL $ fst x) x
 
 combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combine (Fold stepL initL finalizeL)
