@@ -12,11 +12,13 @@ import Data.Serialize
 import Data.ByteString (ByteString)
 
 import Data.Conduit (Sink, await)
+import Data.Copointed
 import qualified Data.Maybe as Maybe
 import Data.Monoid
 import Data.Functor.Contravariant
 import Data.Bifunctor
 import Data.Biapplicative
+import Data.Pointed
 import Data.Profunctor
 import Data.Foldable (Foldable, foldl)
 
@@ -47,6 +49,12 @@ instance Functor (Fold a) where fmap = rmap
 instance Contravariant (Cofold a) where
   contramap f = Cofold . lmap f . getFold
 
+instance Pointed (Fold a) where
+  point b = Fold (const (const ())) () (const b)
+
+instance Copointed (Fold a) where
+  copoint (Fold _ init finalize) = finalize init
+
 instance Applicative (Fold a) where
   pure = point
   (<*>) f = rmap (uncurry ($)) . zip f
@@ -66,7 +74,7 @@ instance Serialize a => MonadZip (Fold a) where
   mzip = zip
 
 instance Comonad (Fold a) where
-  extract (Fold _ init finalize) = finalize init
+  extract = copoint
   extend f = point . f
 
 -- * State Serialization
@@ -113,9 +121,6 @@ scannify (Fold step init finalize)
     finalize' = reverse . map finalize
 
 -- * Construction
-
-point :: b -> Fold a b
-point b = Fold (const (const ())) () (const b)
 
 fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
 fold step init = Fold step init id
