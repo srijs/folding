@@ -28,8 +28,6 @@ import Control.Monad hiding (foldM)
 import Control.Monad.Zip
 import Control.Comonad
 
-import Control.Folding.Internal.SnocList
-
 data Fold a b = forall x. Serialize x => Fold
   (x -> a -> x) -- step
   x -- init
@@ -62,20 +60,6 @@ instance Copointed (Fold a) where
 instance Applicative (Fold a) where
   pure = point
   (<*>) = zap
-
-instance Serialize a => Monad (Fold a) where
-  return = point
-  (>>=) fold = join . flip rmap fold
-    where
-      join (Fold stepL initL finalizeL)
-        = Fold step' init' finalize'
-        where
-          step' (x, as) a = (stepL x a, Snoc as a)
-          init' = (initL, Lin)
-          finalize' (x, as) = run (finalizeL x) as
-
-instance Serialize a => MonadZip (Fold a) where
-  mzip = zip
 
 instance Comonad (Fold a) where
   extract = copoint
