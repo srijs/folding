@@ -18,6 +18,7 @@ import Data.Monoid
 import Data.Functor.Contravariant
 import Data.Bifunctor
 import Data.Biapplicative
+import Data.Key
 import Data.Pointed
 import Data.Profunctor
 import Data.Foldable (Foldable, foldl)
@@ -49,6 +50,9 @@ instance Functor (Fold a) where fmap = rmap
 instance Contravariant (Cofold a) where
   contramap f = Cofold . lmap f . getFold
 
+instance Zip (Fold a) where
+  zip a = lmap (\a -> (a, a)) . combine a
+
 instance Pointed (Fold a) where
   point b = Fold (const (const ())) () (const b)
 
@@ -57,7 +61,7 @@ instance Copointed (Fold a) where
 
 instance Applicative (Fold a) where
   pure = point
-  (<*>) f = rmap (uncurry ($)) . zip f
+  (<*>) = zap
 
 instance Serialize a => Monad (Fold a) where
   return = point
@@ -143,9 +147,6 @@ foldM_ :: (Monad m, Serialize (m b)) =>
 foldM_ step init = rmap (>> return ()) (foldM step init)
 
 -- * Composition
-
-zip :: Fold a b -> Fold a b' -> Fold a (b, b')
-zip a = lmap (\a -> (a, a)) . combine a
 
 compose :: Fold a b -> Fold b c -> Fold a c
 compose foldL = rmap snd . compose' foldL
