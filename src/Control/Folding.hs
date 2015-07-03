@@ -23,6 +23,7 @@ import Data.Biapplicative
 import Data.Key
 import Data.Pointed
 import Data.Profunctor
+import Data.Profunctor.Sieve
 import Data.Semigroupoid
 import Data.Foldable (Foldable, foldl)
 
@@ -74,6 +75,9 @@ instance Comonad (Fold a) where
 
 instance Semigroupoid Fold where
   o foldL foldR = rmap snd $ compose foldR foldL
+
+instance Cosieve Fold [] where
+  cosieve = run
 
 -- * State Serialization
 
