@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, MonadComprehensions, ViewPatterns, TypeOperators #-}
+{-# LANGUAGE ExistentialQuantification, ViewPatterns, TypeOperators, MultiParamTypeClasses #-}
 
 module Control.Folding where
 
@@ -15,17 +15,18 @@ import Data.Conduit (Sink, await)
 import Data.Copointed
 import qualified Data.Maybe as Maybe
 import Data.Monoid
+import Data.Functor.Apply
+import Data.Functor.Extend
 import Data.Functor.Contravariant
 import Data.Bifunctor
 import Data.Biapplicative
 import Data.Key
 import Data.Pointed
 import Data.Profunctor
+import Data.Semigroupoid
 import Data.Foldable (Foldable, foldl)
 
 import Control.Applicative
-import Control.Monad hiding (foldM)
-import Control.Monad.Zip
 import Control.Comonad
 
 data Fold a b = forall x. Serialize x => Fold
@@ -51,6 +52,12 @@ instance Contravariant (Cofold a) where
 instance Zip (Fold a) where
   zip a = lmap (\a -> (a, a)) . combine a
 
+instance Apply (Fold a) where
+  (<.>) = zap
+
+instance Extend (Fold a) where
+  extended f = point . f
+
 instance Pointed (Fold a) where
   point b = Fold (const (const ())) () (const b)
 
@@ -63,7 +70,10 @@ instance Applicative (Fold a) where
 
 instance Comonad (Fold a) where
   extract = copoint
-  extend f = point . f
+  extend = extended
+
+instance Semigroupoid Fold where
+  o foldL foldR = rmap snd $ compose foldR foldL
 
 -- * State Serialization
 
@@ -132,11 +142,8 @@ foldM_ step init = rmap (>> return ()) (foldM step init)
 
 -- * Composition
 
-compose :: Fold a b -> Fold b c -> Fold a c
-compose foldL = rmap snd . compose' foldL
-
-compose' :: Fold a b -> Fold b c -> Fold a (b, c)
-compose' (Fold (flip -> stepL) initL finalizeL)
+compose :: Fold a b -> Fold b c -> Fold a (b, c)
+compose (Fold (flip -> stepL) initL finalizeL)
          (Fold (flip -> stepR) initR finalizeR)
   = Fold (flip step) init finalize
   where
