@@ -37,8 +37,6 @@ data Fold a b = forall x. Serialize x => Fold
 
 type Fold1 a b = Fold a (Maybe b)
 
-newtype Cofold b a = Cofold { getFold :: Fold a b }
-
 instance Profunctor Fold where
   lmap f (Fold step init finalize)
     = Fold (\x -> step x . f) init finalize
@@ -46,9 +44,6 @@ instance Profunctor Fold where
     = Fold step init (f . finalize)
 
 instance Functor (Fold a) where fmap = rmap
-
-instance Contravariant (Cofold a) where
-  contramap f = Cofold . lmap f . getFold
 
 instance Zip (Fold a) where
   zip a = lmap (\a -> (a, a)) . combine a
