@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, ViewPatterns, TypeOperators, MultiParamTypeClasses #-}
+{-# LANGUAGE ExistentialQuantification, ViewPatterns, TypeOperators, MultiParamTypeClasses, TypeFamilies #-}
 
 module Control.Folding where
 
@@ -53,6 +53,21 @@ instance Contravariant (Cofold a) where
 instance Zip (Fold a) where
   zip a = lmap (\a -> (a, a)) . combine a
 
+type instance Key (Fold a) = Integer
+
+instance Keyed (Fold a) where
+  mapWithKey f (Fold step init finalize) = Fold
+    (\(k, x) a -> (succ k, step x a))
+    (0, init)
+    (\(k, x) -> f k (finalize x))
+
+instance ZipWithKey (Fold a)
+
+instance Adjustable (Fold a) where
+  adjust f k fold = mapWithKey f' fold
+    where f' k' a | k == k' = f a
+                  | otherwise = a
+
 instance Apply (Fold a) where
   (<.>) = zap
 
@@ -93,6 +108,11 @@ serializeState = runPut . putState
 
 unserializeState :: Fold a b -> ByteString -> Either String (Fold a b)
 unserializeState = runGet . getState
+
+-- state :: Lens (Fold a b) (Either String (Fold a b)) ByteString ByteString
+state :: Functor f
+      => (ByteString -> f ByteString) -> Fold a b -> f (Either String (Fold a b))
+state f fold = fmap (runGet $ getState fold) (f . runPut $ putState fold)
 
 -- * Running
 
