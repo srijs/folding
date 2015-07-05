@@ -210,7 +210,7 @@ head :: Serialize a => Fold1 a a
 head = fold1 const
 
 last :: Serialize a => Fold1 a a
-last = fold (const Just) Nothing
+last = fold1 (const id)
 
 and :: Fold Bool Bool
 and = fold (&&) True
