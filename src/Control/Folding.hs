@@ -17,7 +17,6 @@ import qualified Data.Maybe as Maybe
 import Data.Monoid
 import Data.Functor.Apply
 import Data.Functor.Extend
-import Data.Functor.Contravariant
 import Data.Bifunctor
 import Data.Biapplicative
 import Data.Key
