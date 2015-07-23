@@ -15,6 +15,7 @@ import Data.Conduit (Sink, await)
 import Data.Copointed
 import qualified Data.Maybe as Maybe
 import Data.Monoid
+import Data.Functor.Identity
 import Data.Functor.Apply
 import Data.Functor.Extend
 import Data.Bifunctor
@@ -90,23 +91,19 @@ instance Cosieve Fold [] where
 
 -- * State Serialization
 
-putState :: Putter (Fold a b)
-putState (Fold _ init _ ) = put init
-
-getState :: Fold a b -> Get (Fold a b)
-getState (Fold step _ finalize)
-  = fmap (\init -> Fold step init finalize) get
-
-serializeState :: Fold a b -> ByteString
-serializeState = runPut . putState
-
-unserializeState :: Fold a b -> ByteString -> Either String (Fold a b)
-unserializeState = runGet . getState
-
 -- state :: Lens (Fold a b) (Either String (Fold a b)) ByteString ByteString
 state :: Functor f
       => (ByteString -> f ByteString) -> Fold a b -> f (Either String (Fold a b))
 state f fold = fmap (runGet $ getState fold) (f . runPut $ putState fold)
+  where
+    putState (Fold _ init _ ) = put init
+    getState (Fold step _ finalize) = fmap (\init -> Fold step init finalize) get
+
+serializeState :: Fold a b -> ByteString
+serializeState = getConst . state Const
+
+unserializeState :: Fold a b -> ByteString -> Either String (Fold a b)
+unserializeState fd b = runIdentity $ state (const $ Identity b) fd
 
 -- * Running
 
