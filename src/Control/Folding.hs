@@ -3,9 +3,10 @@
 module Control.Folding where
 
 import Prelude hiding
-  ( any, all, and, or, sum
-  , zip, length, head, last
-  , maximum, maybe, foldl
+  ( any, all, and, or, sum, product
+  , zip, length, head, last, elem
+  , maximum, maybe, foldl, filter
+  , minimum, take, drop
   )
 
 import Data.Serialize
@@ -194,8 +195,22 @@ maybe (Fold step init finalize)
     step' x = Maybe.maybe x (step x)
 
 filter :: (a -> Bool) -> Fold a b -> Fold a b
-filter p fold = lmap f (maybe fold)
+filter p = lmap f . maybe
   where f a = if p a then Just a else Nothing
+
+take :: Integer -> Fold a b -> Fold a b
+take l (Fold step init finalize)
+  = Fold step' (0, init) (finalize.snd)
+    where
+      step' (i, x) a | i < l = (i + 1, step x a)
+                     | otherwise = (i, x)
+
+drop :: Integer -> Fold a b -> Fold a b
+drop l (Fold step init finalize)
+  = Fold step' (0, init) (finalize.snd)
+    where
+      step' (i, x) a | i < l = (i + 1, x)
+                     | otherwise = (i, step x a)
 
 -- * Folds
 
