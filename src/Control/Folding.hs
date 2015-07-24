@@ -1,4 +1,5 @@
 {-# LANGUAGE ExistentialQuantification, ViewPatterns, TypeOperators, MultiParamTypeClasses, TypeFamilies #-}
+{-# LANGUAGE DeriveFunctor #-}
 
 module Control.Folding where
 
@@ -6,7 +7,7 @@ import Prelude hiding
   ( any, all, and, or, sum, product
   , zip, length, head, last, elem
   , maximum, maybe, foldl, filter
-  , minimum, take, drop
+  , minimum, take, drop, id, (.)
   )
 
 import Data.Serialize
@@ -19,6 +20,7 @@ import Data.Monoid
 import Data.Functor.Identity
 import Data.Functor.Apply
 import Data.Functor.Extend
+import Data.Functor.Contravariant
 import Data.Bifunctor
 import Data.Biapplicative
 import Data.Key
@@ -29,26 +31,167 @@ import Data.Semigroupoid
 import Data.Foldable (Foldable, foldl)
 
 import Control.Applicative
+import Control.Arrow
+import Control.Category
 import Control.Comonad
 
-data Fold a b = forall x. Serialize x => Fold
-  (x -> a -> x) -- step
-  x -- init
-  (x -> b) -- finalize
+-- * Data Types
 
-type Fold1 a b = Fold a (Maybe b)
+data Cofree h a = Cofree
+  { unCofree :: (a, h (Cofree h a))
+  } deriving Functor
+
+newtype Fold' a b = Fold' { unFold :: Cofree ((->) a) b }
+
+data Fold a b = Fold b (Folding a b)
+
+newtype Folding a b = Folding (a -> Fold a b)
+
+newtype Folding' a b = Folding' (a -> Fold' a b)
+
+-- * Functor
+
+instance Functor (Fold' a) where
+  fmap f = Fold' . fmap f . unFold
+
+instance Functor (Fold a) where
+  fmap f (Fold a folding) = Fold (f a) $ fmap f folding
+
+instance Functor (Folding a) where
+  fmap f (Folding g) = Folding $ fmap (fmap f) g
+
+instance Functor (Folding' a) where
+  fmap f (Folding' g) = Folding' $ fmap (fmap f) g
+
+-- * Combine
+
+combineFolds :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
+combineFolds (Fold a folding) (Fold a' folding') = Fold (a, a') $ combine folding folding'
+
+combine :: Folding a b -> Folding a' b' -> Folding (a, a') (b, b')
+combine (Folding f) (Folding g) = Folding $ \(a, a') -> combineFolds (f a) (g a')
+
+combineFolds' :: Fold' a b -> Fold' a' b' -> Fold' (a, a') (b, b')
+combineFolds' (Fold' cofree) (Fold' cofree') = Fold' $ combineCofree cofree cofree'
+  where combineF f g (a, a') = combineCofree (f a) (g a')
+        combineCofree (Cofree (b, f)) (Cofree (b', g)) = Cofree $ ((b, b'), combineF f g)
+
+combine' :: Folding' a b -> Folding' a' b' -> Folding' (a, a') (b, b')
+combine' (Folding' f) (Folding' g) = Folding' $ \(a, a') -> combineFolds' (f a) (g a')
+
+-- * Profunctor
 
 instance Profunctor Fold where
-  lmap f (Fold step init finalize)
-    = Fold (\x -> step x . f) init finalize
-  rmap f (Fold step init finalize)
-    = Fold step init (f . finalize)
+  lmap f (Fold b folding) = Fold b $ lmap f folding
+  rmap = fmap
 
-instance Functor (Fold a) where fmap = rmap
+instance Profunctor Folding where
+  lmap f (Folding g) = Folding $ dimap f (lmap f) g
+  rmap = fmap
+
+instance Profunctor Fold' where
+  lmap f (Fold' cofree) = Fold' $ lmapCofree f cofree
+    where lmapCofree f' (Cofree (b, g)) = Cofree (b, dimap f' (lmapCofree f') g)
+  rmap = fmap
+
+instance Profunctor Folding' where
+  lmap f (Folding' g) = Folding' $ dimap f (lmap f) g
+  rmap = fmap
+
+-- * Zip
 
 instance Zip (Fold a) where
-  zip a = lmap (\a -> (a, a)) . combine a
+  zip fold = lmap (\a -> (a, a)) . combineFolds fold
 
+instance Zip (Folding a) where
+  zip folding = lmap (\a -> (a, a)) . combine folding
+
+instance Zip (Fold' a) where
+  zip fold = lmap (\a -> (a, a)) . combineFolds' fold
+
+instance Zip (Folding' a) where
+  zip folding = lmap (\a -> (a, a)) . combine' folding
+
+-- * Pointed
+
+instance Pointed (Fold a) where
+  point b = Fold b (point b)
+
+instance Pointed (Folding a) where
+  point b = Folding $ point (point b)
+
+instance Pointed (Fold' a) where
+  point b = Fold' $ pointCofree b
+    where pointCofree b' = Cofree (b', point (pointCofree b'))
+
+instance Pointed (Folding' a) where
+  point b = Folding' $ point (point b)
+
+-- * Comonad
+
+instance Copointed (Fold a) where
+  copoint (Fold b _) = b
+
+instance Copointed (Cofree h) where
+  copoint (Cofree (a, _)) = a
+
+instance Copointed (Fold' a) where
+  copoint (Fold' cofree) = copoint cofree
+
+instance Extend (Fold a) where
+  extended f = point . f
+
+instance Comonad (Fold a) where
+  extract = copoint
+  extend = extended
+
+-- * Apply
+
+instance Apply (Fold a) where
+  (<.>) = zap
+
+instance Apply (Folding a) where
+  (<.>) = zap
+
+-- * Applicative
+
+instance Applicative (Fold a) where
+  pure = point
+  (<*>) = zap
+
+instance Applicative (Folding a) where
+  pure = point
+  (<*>) = zap
+
+-- * Compose
+
+composeFolds :: Fold a b -> Fold b c -> Fold a (b, c)
+composeFolds (Fold b foldingAB) (Fold c foldingBC) = Fold (b, c) $ compose foldingAB foldingBC
+
+compose :: Folding a b -> Folding b c -> Folding a (b, c)
+compose (Folding f) (Folding g) = Folding $ \a -> let fold@(Fold b _) = f a in composeFolds fold (g b)
+
+-- * Semigroupoid
+
+instance Semigroupoid Fold where
+  o foldBC foldAB = fmap snd $ composeFolds foldAB foldBC
+
+instance Semigroupoid Folding where
+  o foldingBC foldingAB = fmap snd $ compose foldingAB foldingBC
+
+-- * Category
+
+instance Category Folding where
+  id = Folding $ \a -> Fold a id
+  (.) = o
+
+-- * Arrow
+
+instance Arrow Folding where
+  first folding = combine folding id
+  arr f = Folding $ \a -> Fold (f a) (arr f)
+
+{-
 type instance Key (Fold a) = Integer
 
 instance Keyed (Fold a) where
@@ -63,32 +206,6 @@ instance Adjustable (Fold a) where
   adjust f k fold = mapWithKey f' fold
     where f' k' a | k == k' = f a
                   | otherwise = a
-
-instance Apply (Fold a) where
-  (<.>) = zap
-
-instance Extend (Fold a) where
-  extended f = point . f
-
-instance Pointed (Fold a) where
-  point b = Fold (const (const ())) () (const b)
-
-instance Copointed (Fold a) where
-  copoint (Fold _ init finalize) = finalize init
-
-instance Applicative (Fold a) where
-  pure = point
-  (<*>) = zap
-
-instance Comonad (Fold a) where
-  extract = copoint
-  extend = extended
-
-instance Semigroupoid Fold where
-  o foldL foldR = rmap snd $ compose foldR foldL
-
-instance Cosieve Fold [] where
-  cosieve = run
 
 -- * State Serialization
 
@@ -257,4 +374,4 @@ elem :: Eq a => a -> Fold a Bool
 elem a = any (a==)
 
 notElem :: Eq a => a -> Fold a Bool
-notElem a = all (a/=)
+notElem a = all (a/=)-}
