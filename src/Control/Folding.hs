@@ -214,11 +214,21 @@ instance Category Folding where
   id = Folding $ \a -> Fold a id
   (.) = o
 
+instance Category Folding' where
+  id = Folding' (Fold' . idCofree)
+    where idCofree a = Cofree (a, idCofree)
+  (.) = o
+
 -- * Arrow
 
 instance Arrow Folding where
   first folding = combine folding id
   arr f = Folding $ \a -> Fold (f a) (arr f)
+
+instance Arrow Folding' where
+  first folding = combine' folding id
+  arr f = Folding' (Fold' . arrCofree)
+    where arrCofree a = Cofree (f a, arrCofree)
 
 {-
 type instance Key (Fold a) = Integer
