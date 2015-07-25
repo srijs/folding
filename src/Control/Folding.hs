@@ -70,8 +70,8 @@ instance Zip (Folding a) where
 -- * Pointed
 
 instance Pointed (Folding a) where
-  point b = Folding $ point (pointCofree b)
-    where pointCofree b' = Cofree (b', point (pointCofree b'))
+  point b = Folding pointCofree
+    where pointCofree _ = Cofree (b, pointCofree)
 
 -- * Comonad
 
