@@ -51,15 +51,15 @@ instance Functor (Folding a) where
 -- * Combine
 
 combine :: Folding a b -> Folding a' b' -> Folding (a, a') (b, b')
-combine (Folding f) (Folding g) = Folding $ \(a, a') -> combineCofree (f a) (g a')
+combine (Folding f) (Folding g) = Folding $ combineF f g
   where combineF f' g' (a, a') = combineCofree (f' a) (g' a')
-        combineCofree (Cofree (b, f')) (Cofree (b', g')) = Cofree $ ((b, b'), combineF f' g')
+        combineCofree (Cofree (b, f')) (Cofree (b', g')) = Cofree ((b, b'), combineF f' g')
 
 -- * Profunctor
 
 instance Profunctor Folding where
-  lmap f (Folding g) = Folding $ \a -> lmapCofree f (g (f a))
-    where lmapCofree f' (Cofree (b, g')) = Cofree (b, dimap f' (lmapCofree f') g')
+  lmap f (Folding g) = Folding $ lmapCofree . g . f
+    where lmapCofree (Cofree (b, g')) = Cofree (b, lmapCofree . g'. f)
   rmap = fmap
 
 -- * Zip
@@ -92,8 +92,8 @@ instance Applicative (Folding a) where
 -- * Compose
 
 compose :: Folding a b -> Folding b c -> Folding a (b, c)
-compose (Folding f) (Folding g) = Folding $ \a -> let cofree@(Cofree (b, _)) = f a in composeCofree cofree (g b)
-  where composeF f' g' a = let cofree'@(Cofree (b, _)) = f' a in composeCofree cofree' (g' b)
+compose (Folding f) (Folding g) = Folding $ composeF f g
+  where composeF f' g' a = let cofree = f' a in composeCofree cofree (g' (copoint cofree))
         composeCofree (Cofree (b, f')) (Cofree (c, g')) = Cofree ((b, c), composeF f' g')
 
 -- * Semigroupoid
