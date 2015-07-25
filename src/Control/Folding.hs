@@ -153,13 +153,28 @@ instance Apply (Fold a) where
 instance Apply (Folding a) where
   (<.>) = zap
 
+instance Apply (Fold' a) where
+  (<.>) = zap
+
+instance Apply (Folding' a) where
+  (<.>) = zap
+
+
 -- * Applicative
 
 instance Applicative (Fold a) where
   pure = point
   (<*>) = zap
 
+instance Applicative (Fold' a) where
+  pure = point
+  (<*>) = zap
+
 instance Applicative (Folding a) where
+  pure = point
+  (<*>) = zap
+
+instance Applicative (Folding' a) where
   pure = point
   (<*>) = zap
 
@@ -168,16 +183,30 @@ instance Applicative (Folding a) where
 composeFolds :: Fold a b -> Fold b c -> Fold a (b, c)
 composeFolds (Fold b foldingAB) (Fold c foldingBC) = Fold (b, c) $ compose foldingAB foldingBC
 
+composeFolds' :: Fold' a b -> Fold' b c -> Fold' a (b, c)
+composeFolds' (Fold' cofree) (Fold' cofree') = Fold' $ composeCofree cofree cofree'
+  where composeF f g a = let cofree''@(Cofree (b, _)) = f a in composeCofree cofree'' (g b)
+        composeCofree (Cofree (b, f)) (Cofree (c, g)) = Cofree ((b, c), composeF f g)
+
 compose :: Folding a b -> Folding b c -> Folding a (b, c)
 compose (Folding f) (Folding g) = Folding $ \a -> let fold@(Fold b _) = f a in composeFolds fold (g b)
+
+compose' :: Folding' a b -> Folding' b c -> Folding' a (b, c)
+compose' (Folding' f) (Folding' g) = Folding' $ \a -> let fold@(Fold' (Cofree (b, _))) = f a in composeFolds' fold (g b)
 
 -- * Semigroupoid
 
 instance Semigroupoid Fold where
   o foldBC foldAB = fmap snd $ composeFolds foldAB foldBC
 
+instance Semigroupoid Fold' where
+  o foldBC foldAB = fmap snd $ composeFolds' foldAB foldBC
+
 instance Semigroupoid Folding where
   o foldingBC foldingAB = fmap snd $ compose foldingAB foldingBC
+
+instance Semigroupoid Folding' where
+  o foldingBC foldingAB = fmap snd $ compose' foldingAB foldingBC
 
 -- * Category
 
