@@ -41,181 +41,70 @@ data Cofree h a = Cofree
   { unCofree :: (a, h (Cofree h a))
   } deriving Functor
 
-newtype Fold' a b = Fold' { unFold :: Cofree ((->) a) b }
-
-data Fold a b = Fold b (Folding a b)
-
-newtype Folding a b = Folding (a -> Fold a b)
-
-newtype Folding' a b = Folding' (a -> Fold' a b)
+newtype Folding a b = Folding (a -> Cofree ((->) a) b)
 
 -- * Functor
-
-instance Functor (Fold' a) where
-  fmap f = Fold' . fmap f . unFold
-
-instance Functor (Fold a) where
-  fmap f (Fold a folding) = Fold (f a) $ fmap f folding
 
 instance Functor (Folding a) where
   fmap f (Folding g) = Folding $ fmap (fmap f) g
 
-instance Functor (Folding' a) where
-  fmap f (Folding' g) = Folding' $ fmap (fmap f) g
-
 -- * Combine
 
-combineFolds :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combineFolds (Fold a folding) (Fold a' folding') = Fold (a, a') $ combine folding folding'
-
 combine :: Folding a b -> Folding a' b' -> Folding (a, a') (b, b')
-combine (Folding f) (Folding g) = Folding $ \(a, a') -> combineFolds (f a) (g a')
-
-combineFolds' :: Fold' a b -> Fold' a' b' -> Fold' (a, a') (b, b')
-combineFolds' (Fold' cofree) (Fold' cofree') = Fold' $ combineCofree cofree cofree'
-  where combineF f g (a, a') = combineCofree (f a) (g a')
-        combineCofree (Cofree (b, f)) (Cofree (b', g)) = Cofree $ ((b, b'), combineF f g)
-
-combine' :: Folding' a b -> Folding' a' b' -> Folding' (a, a') (b, b')
-combine' (Folding' f) (Folding' g) = Folding' $ \(a, a') -> combineFolds' (f a) (g a')
+combine (Folding f) (Folding g) = Folding $ \(a, a') -> combineCofree (f a) (g a')
+  where combineF f' g' (a, a') = combineCofree (f' a) (g' a')
+        combineCofree (Cofree (b, f')) (Cofree (b', g')) = Cofree $ ((b, b'), combineF f' g')
 
 -- * Profunctor
 
-instance Profunctor Fold where
-  lmap f (Fold b folding) = Fold b $ lmap f folding
-  rmap = fmap
-
 instance Profunctor Folding where
-  lmap f (Folding g) = Folding $ dimap f (lmap f) g
-  rmap = fmap
-
-instance Profunctor Fold' where
-  lmap f (Fold' cofree) = Fold' $ lmapCofree f cofree
-    where lmapCofree f' (Cofree (b, g)) = Cofree (b, dimap f' (lmapCofree f') g)
-  rmap = fmap
-
-instance Profunctor Folding' where
-  lmap f (Folding' g) = Folding' $ dimap f (lmap f) g
+  lmap f (Folding g) = Folding $ \a -> lmapCofree f (g (f a))
+    where lmapCofree f' (Cofree (b, g')) = Cofree (b, dimap f' (lmapCofree f') g')
   rmap = fmap
 
 -- * Zip
 
-instance Zip (Fold a) where
-  zip fold = lmap (\a -> (a, a)) . combineFolds fold
-
 instance Zip (Folding a) where
   zip folding = lmap (\a -> (a, a)) . combine folding
 
-instance Zip (Fold' a) where
-  zip fold = lmap (\a -> (a, a)) . combineFolds' fold
-
-instance Zip (Folding' a) where
-  zip folding = lmap (\a -> (a, a)) . combine' folding
-
 -- * Pointed
 
-instance Pointed (Fold a) where
-  point b = Fold b (point b)
-
 instance Pointed (Folding a) where
-  point b = Folding $ point (point b)
-
-instance Pointed (Fold' a) where
-  point b = Fold' $ pointCofree b
+  point b = Folding $ point (pointCofree b)
     where pointCofree b' = Cofree (b', point (pointCofree b'))
 
-instance Pointed (Folding' a) where
-  point b = Folding' $ point (point b)
-
 -- * Comonad
-
-instance Copointed (Fold a) where
-  copoint (Fold b _) = b
 
 instance Copointed (Cofree h) where
   copoint (Cofree (a, _)) = a
 
-instance Copointed (Fold' a) where
-  copoint (Fold' cofree) = copoint cofree
-
-instance Extend (Fold a) where
-  extended f = point . f
-
-instance Comonad (Fold a) where
-  extract = copoint
-  extend = extended
-
 -- * Apply
-
-instance Apply (Fold a) where
-  (<.>) = zap
 
 instance Apply (Folding a) where
   (<.>) = zap
 
-instance Apply (Fold' a) where
-  (<.>) = zap
-
-instance Apply (Folding' a) where
-  (<.>) = zap
-
-
 -- * Applicative
-
-instance Applicative (Fold a) where
-  pure = point
-  (<*>) = zap
-
-instance Applicative (Fold' a) where
-  pure = point
-  (<*>) = zap
 
 instance Applicative (Folding a) where
   pure = point
   (<*>) = zap
 
-instance Applicative (Folding' a) where
-  pure = point
-  (<*>) = zap
-
 -- * Compose
 
-composeFolds :: Fold a b -> Fold b c -> Fold a (b, c)
-composeFolds (Fold b foldingAB) (Fold c foldingBC) = Fold (b, c) $ compose foldingAB foldingBC
-
-composeFolds' :: Fold' a b -> Fold' b c -> Fold' a (b, c)
-composeFolds' (Fold' cofree) (Fold' cofree') = Fold' $ composeCofree cofree cofree'
-  where composeF f g a = let cofree''@(Cofree (b, _)) = f a in composeCofree cofree'' (g b)
-        composeCofree (Cofree (b, f)) (Cofree (c, g)) = Cofree ((b, c), composeF f g)
-
 compose :: Folding a b -> Folding b c -> Folding a (b, c)
-compose (Folding f) (Folding g) = Folding $ \a -> let fold@(Fold b _) = f a in composeFolds fold (g b)
-
-compose' :: Folding' a b -> Folding' b c -> Folding' a (b, c)
-compose' (Folding' f) (Folding' g) = Folding' $ \a -> let fold@(Fold' (Cofree (b, _))) = f a in composeFolds' fold (g b)
+compose (Folding f) (Folding g) = Folding $ \a -> let cofree@(Cofree (b, _)) = f a in composeCofree cofree (g b)
+  where composeF f' g' a = let cofree'@(Cofree (b, _)) = f' a in composeCofree cofree' (g' b)
+        composeCofree (Cofree (b, f')) (Cofree (c, g')) = Cofree ((b, c), composeF f' g')
 
 -- * Semigroupoid
-
-instance Semigroupoid Fold where
-  o foldBC foldAB = fmap snd $ composeFolds foldAB foldBC
-
-instance Semigroupoid Fold' where
-  o foldBC foldAB = fmap snd $ composeFolds' foldAB foldBC
 
 instance Semigroupoid Folding where
   o foldingBC foldingAB = fmap snd $ compose foldingAB foldingBC
 
-instance Semigroupoid Folding' where
-  o foldingBC foldingAB = fmap snd $ compose' foldingAB foldingBC
-
 -- * Category
 
 instance Category Folding where
-  id = Folding $ \a -> Fold a id
-  (.) = o
-
-instance Category Folding' where
-  id = Folding' (Fold' . idCofree)
+  id = Folding idCofree
     where idCofree a = Cofree (a, idCofree)
   (.) = o
 
@@ -223,11 +112,7 @@ instance Category Folding' where
 
 instance Arrow Folding where
   first folding = combine folding id
-  arr f = Folding $ \a -> Fold (f a) (arr f)
-
-instance Arrow Folding' where
-  first folding = combine' folding id
-  arr f = Folding' (Fold' . arrCofree)
+  arr f = Folding arrCofree
     where arrCofree a = Cofree (f a, arrCofree)
 
 {-
