@@ -34,12 +34,9 @@ import Control.Applicative
 import Control.Arrow
 import Control.Category
 import Control.Comonad
+import Control.Comonad.Cofree
 
 -- * Data Types
-
-data Cofree h a = Cofree
-  { unCofree :: (a, h (Cofree h a))
-  } deriving Functor
 
 newtype Folding a b = Folding (a -> Cofree ((->) a) b)
 
@@ -53,13 +50,13 @@ instance Functor (Folding a) where
 combine :: Folding a b -> Folding a' b' -> Folding (a, a') (b, b')
 combine (Folding f) (Folding g) = Folding $ combineF f g
   where combineF f' g' (a, a') = combineCofree (f' a) (g' a')
-        combineCofree (Cofree (b, f')) (Cofree (b', g')) = Cofree ((b, b'), combineF f' g')
+        combineCofree (b :< f') (b' :< g') = (b, b') :< combineF f' g'
 
 -- * Profunctor
 
 instance Profunctor Folding where
   lmap f (Folding g) = Folding $ lmapCofree . g . f
-    where lmapCofree (Cofree (b, g')) = Cofree (b, lmapCofree . g'. f)
+    where lmapCofree (b :< g') = b :< lmapCofree . g'. f
   rmap = fmap
 
 -- * Zip
@@ -71,12 +68,7 @@ instance Zip (Folding a) where
 
 instance Pointed (Folding a) where
   point b = Folding pointCofree
-    where pointCofree _ = Cofree (b, pointCofree)
-
--- * Comonad
-
-instance Copointed (Cofree h) where
-  copoint (Cofree (a, _)) = a
+    where pointCofree _ = b :< pointCofree
 
 -- * Apply
 
@@ -93,19 +85,19 @@ instance Applicative (Folding a) where
 
 compose :: Folding a b -> Folding b c -> Folding a (b, c)
 compose (Folding f) (Folding g) = Folding $ composeF f g
-  where composeF f' g' a = let cofree = f' a in composeCofree cofree (g' (copoint cofree))
-        composeCofree (Cofree (b, f')) (Cofree (c, g')) = Cofree ((b, c), composeF f' g')
+  where composeF f' g' a = let cofree = f' a in composeCofree cofree (g' (extract cofree))
+        composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
 -- * Semigroupoid
 
 instance Semigroupoid Folding where
-  o foldingBC foldingAB = fmap snd $ compose foldingAB foldingBC
+  o foldingBC foldingAB = snd <$> compose foldingAB foldingBC
 
 -- * Category
 
 instance Category Folding where
   id = Folding idCofree
-    where idCofree a = Cofree (a, idCofree)
+    where idCofree a = a :< idCofree
   (.) = o
 
 -- * Arrow
@@ -113,7 +105,7 @@ instance Category Folding where
 instance Arrow Folding where
   first folding = combine folding id
   arr f = Folding arrCofree
-    where arrCofree a = Cofree (f a, arrCofree)
+    where arrCofree a = f a :< arrCofree
 
 {-
 type instance Key (Fold a) = Integer
