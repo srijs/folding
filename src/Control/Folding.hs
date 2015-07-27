@@ -85,7 +85,8 @@ instance Applicative (Folding a) where
 
 compose :: Folding a b -> Folding b c -> Folding a (b, c)
 compose (Folding f) (Folding g) = Folding $ composeF f g
-  where composeF f' g' a = let cofree = f' a in composeCofree cofree (g' (extract cofree))
+  where composeF f' g' a = let cofree = f' a
+                           in composeCofree cofree (g' (extract cofree))
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
 -- * Semigroupoid
