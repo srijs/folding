@@ -38,6 +38,10 @@ import Control.Comonad.Cofree
 
 -- * Data Types
 
+data Fold a b = Fold (b -> a -> b)
+
+newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
+
 newtype Folding a b = Folding (a -> Cofree ((->) a) b)
 
 -- * Functor
