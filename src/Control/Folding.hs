@@ -64,6 +64,10 @@ combine (Folding f) (Folding g) = Folding $ combineF f g
   where combineF f' g' (a, a') = combineCofree (f' a) (g' a')
         combineCofree (b :< f') (b' :< g') = (b, b') :< combineF f' g'
 
+combineFold :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
+combineFold (Fold f) (Fold g) = Fold $
+  \(b, b') (a, a') -> (f b a, g b' a')
+
 -- * Profunctor
 
 instance Profunctor Folding where
@@ -100,6 +104,10 @@ compose (Folding f) (Folding g) = Folding $ composeF f g
   where composeF f' g' a = let cofree = f' a
                            in composeCofree cofree (g' (extract cofree))
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
+
+composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
+composeFold (Fold f) (Fold g) = Fold $
+  \(b, c) a -> let b' = f b a in (b', g c b')
 
 -- * Semigroupoid
 
