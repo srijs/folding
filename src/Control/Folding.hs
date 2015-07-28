@@ -38,7 +38,15 @@ import Control.Comonad.Cofree
 
 -- * Data Types
 
+-- | 'Fold' is a bifunctor which is contravariant
+-- in the first argument, and invariant in the second.
 data Fold a b = Fold (b -> a -> b)
+
+inmap :: (b -> a) -> Fold a c -> Fold b c
+inmap f (Fold g) = Fold $ \c b -> g c (f b)
+
+outmap :: (b -> c) -> (c -> b) -> Fold a b -> Fold a c
+outmap f f' (Fold g) = Fold $ \c a -> f (g (f' c) a)
 
 newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
 
