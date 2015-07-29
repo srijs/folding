@@ -40,13 +40,13 @@ import Control.Comonad.Cofree
 
 -- | 'Fold' is a bifunctor which is contravariant
 -- in the first argument, and invariant in the second.
-data Fold a b = Fold (b -> a -> b)
+data Fold a b = Fold (a -> b) (b -> a -> b)
 
 inmap :: (b -> a) -> Fold a c -> Fold b c
-inmap f (Fold g) = Fold $ \c b -> g c (f b)
+inmap f (Fold i g) = Fold (i . f) $ \c b -> g c (f b)
 
 outmap :: (b -> c) -> (c -> b) -> Fold a b -> Fold a c
-outmap f f' (Fold g) = Fold $ \c a -> f (g (f' c) a)
+outmap f f' (Fold i g) = Fold (f . i) $ \c a -> f (g (f' c) a)
 
 newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
 
@@ -65,7 +65,7 @@ combine (Folding f) (Folding g) = Folding $ combineF f g
         combineCofree (b :< f') (b' :< g') = (b, b') :< combineF f' g'
 
 combineFold :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combineFold (Fold f) (Fold g) = Fold $
+combineFold (Fold i f) (Fold j g) = Fold (\(a, a') -> (i a, j a')) $
   \(b, b') (a, a') -> (f b a, g b' a')
 
 -- * Profunctor
@@ -106,7 +106,7 @@ compose (Folding f) (Folding g) = Folding $ composeF f g
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
 composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
-composeFold (Fold f) (Fold g) = Fold $
+composeFold (Fold i f) (Fold j g) = Fold (\a -> let b = i a in (b, j b)) $
   \(b, c) a -> let b' = f b a in (b', g c b')
 
 -- * Semigroupoid
