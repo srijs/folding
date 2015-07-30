@@ -38,15 +38,27 @@ import Control.Comonad.Cofree
 
 -- * Data Types
 
+data Init a b = Zero b | One (a -> b)
+  deriving Functor
+
+instance Profunctor Init where
+  lmap _ (Zero b) = Zero b
+  lmap f (One g)  = One (g . f)
+  rmap = fmap
+
+peel :: Init a b -> (b -> a -> b) -> Init a b
+peel (Zero b) f = One (f b)
+peel (One f) _ = One f
+
 -- | 'Fold' is a bifunctor which is contravariant
 -- in the first argument, and invariant in the second.
-data Fold a b = Fold (a -> b) (b -> a -> b)
+data Fold a b = Fold (Init a b) (b -> a -> b)
 
 inmap :: (b -> a) -> Fold a c -> Fold b c
-inmap f (Fold i g) = Fold (i . f) $ \c b -> g c (f b)
+inmap f (Fold i g) = Fold (lmap f i) $ \c b -> g c (f b)
 
 outmap :: (b -> c) -> (c -> b) -> Fold a b -> Fold a c
-outmap f f' (Fold i g) = Fold (f . i) $ \c a -> f (g (f' c) a)
+outmap f f' (Fold i g) = Fold (rmap f i) $ \c a -> f (g (f' c) a)
 
 newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
 
@@ -64,8 +76,14 @@ combine (Folding f) (Folding g) = Folding $ combineF f g
   where combineF f' g' (a, a') = combineCofree (f' a) (g' a')
         combineCofree (b :< f') (b' :< g') = (b, b') :< combineF f' g'
 
+combineInit :: (b -> a -> b) -> (b' -> a' -> b') -> Init a b -> Init a' b' -> Init (a, a') (b, b')
+combineInit f g (Zero b) (Zero b') = Zero (b, b')
+combineInit f g (Zero b) (One g')  = One $ \(a, a') -> (f b a, g' a')
+combineInit f g (One f') (Zero b') = One $ \(a, a') -> (f' a, g b' a')
+combineInit f g (One f') (One g')  = One $ \(a, a') -> (f' a, g' a')
+
 combineFold :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combineFold (Fold i f) (Fold j g) = Fold (\(a, a') -> (i a, j a')) $
+combineFold (Fold i f) (Fold j g) = Fold (combineInit f g i j) $
   \(b, b') (a, a') -> (f b a, g b' a')
 
 -- * Profunctor
@@ -105,9 +123,9 @@ compose (Folding f) (Folding g) = Folding $ composeF f g
                            in composeCofree cofree (g' (extract cofree))
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
-composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
+{-composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
 composeFold (Fold i f) (Fold j g) = Fold (\a -> let b = i a in (b, j b)) $
-  \(b, c) a -> let b' = f b a in (b', g c b')
+  \(b, c) a -> let b' = f b a in (b', g c b')-}
 
 -- * Semigroupoid
 
