@@ -123,9 +123,15 @@ compose (Folding f) (Folding g) = Folding $ composeF f g
                            in composeCofree cofree (g' (extract cofree))
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
-{-composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
-composeFold (Fold i f) (Fold j g) = Fold (\a -> let b = i a in (b, j b)) $
-  \(b, c) a -> let b' = f b a in (b', g c b')-}
+composeInit :: (c -> b -> c) -> Init a b -> Init b c -> Init a (b, c)
+composeInit g (Zero b) (Zero c) = Zero (b, g c b)
+composeInit _ (Zero b) (One g)  = Zero (b, g b)
+composeInit g (One f)  (Zero c) = One $ \a -> let b = f a in (b, g c b)
+composeInit _ (One f)  (One g)  = One $ \a -> let b = f a in (b, g b)
+
+composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
+composeFold (Fold i f) (Fold j g) = Fold (composeInit g i j) $
+  \(b, c) a -> let b' = f b a in (b', g c b')
 
 -- * Semigroupoid
 
