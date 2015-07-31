@@ -74,6 +74,12 @@ peel (One f) _ = f
 -- in the first argument, and invariant in the second.
 data Fold a b = Fold (Init a b) (a :->: b)
 
+fold :: (a :->: b) -> b -> Fold a b
+fold f b = Fold (Zero b) f
+
+fold1 :: (a :->: b) -> (a -> b) -> Fold a b
+fold1 f g = Fold (One g) f
+
 inmap' :: (b -> a) -> Fold a c -> Fold b c
 inmap' f (Fold i g) = Fold (lmap f i) (inmap f g)
 
