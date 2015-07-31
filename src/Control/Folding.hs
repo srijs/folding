@@ -78,9 +78,7 @@ combine (Folding f) (Folding g) = Folding $ combineF f g
 
 combineInit :: (b -> a -> b) -> (b' -> a' -> b') -> Init a b -> Init a' b' -> Init (a, a') (b, b')
 combineInit _ _ (Zero b) (Zero b') = Zero (b, b')
-combineInit f _ (Zero b) (One g')  = One $ \(a, a') -> (f b a, g' a')
-combineInit _ g (One f') (Zero b') = One $ \(a, a') -> (f' a, g b' a')
-combineInit _ _ (One f') (One g')  = One $ \(a, a') -> (f' a, g' a')
+combineInit f g i j = One $ \(a, a') -> (peel i f a, peel j g a')
 
 combineFold :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combineFold (Fold i f) (Fold j g) = Fold (combineInit f g i j) $
@@ -124,10 +122,7 @@ compose (Folding f) (Folding g) = Folding $ composeF f g
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
 composeInit :: (c -> b -> c) -> Init a b -> Init b c -> Init a (b, c)
-composeInit g (Zero b) (Zero c) = Zero (b, g c b)
-composeInit _ (Zero b) (One g)  = Zero (b, g b)
-composeInit g (One f)  (Zero c) = One $ \a -> let b = f a in (b, g c b)
-composeInit _ (One f)  (One g)  = One $ \a -> let b = f a in (b, g b)
+composeInit g i j = rmap (\b -> (b, peel j g b)) i
 
 composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
 composeFold (Fold i f) (Fold j g) = Fold (composeInit g i j) $
