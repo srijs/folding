@@ -72,19 +72,17 @@ peel (One f) _ = f
 
 -- | 'Fold' is a bifunctor which is contravariant
 -- in the first argument, and invariant in the second.
-data Fold a b = Fold (Init a b) (a :->: b)
+data Fold a b = forall x. Fold (Init a x) (a :->: x) (x -> b)
 
 fold :: (a :->: b) -> b -> Fold a b
-fold f b = Fold (Zero b) f
+fold f b = Fold (Zero b) f id
 
 fold1 :: (a :->: b) -> (a -> b) -> Fold a b
-fold1 f g = Fold (One g) f
+fold1 f g = Fold (One g) f id
 
-inmap' :: (b -> a) -> Fold a c -> Fold b c
-inmap' f (Fold i g) = Fold (lmap f i) (inmap f g)
-
-outmap' :: (b -> c) -> (c -> b) -> Fold a b -> Fold a c
-outmap' f f' (Fold i g) = Fold (rmap f i) (outmap f f' g)
+instance Profunctor Fold where
+  lmap f (Fold i g s) = Fold (lmap f i) (inmap f g) s
+  rmap f (Fold i g s) = Fold i g (f . s)
 
 newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
 
@@ -107,8 +105,9 @@ combineInit _ _ (Zero b) (Zero b') = Zero (b, b')
 combineInit f g i j = One $ \(a, a') -> (peel i f a, peel j g a')
 
 combineFold :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combineFold (Fold i f) (Fold j g) = Fold (combineInit f g i j) $
-  \(b, b') (a, a') -> (f b a, g b' a')
+combineFold (Fold i f s) (Fold j g t) = Fold (combineInit f g i j) h u
+  where h = \(b, b') (a, a') -> (f b a, g b' a')
+        u = \(x, x') -> (s x, t x')
 
 -- * Profunctor
 
@@ -147,12 +146,13 @@ compose (Folding f) (Folding g) = Folding $ composeF f g
                            in composeCofree cofree (g' (extract cofree))
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
-composeInit :: (b :->: c) -> Init a b -> Init b c -> Init a (b, c)
-composeInit g i j = rmap (\b -> (b, peel j g b)) i
+composeInit :: (b :->: y) -> (x -> b) -> Init a x -> Init b y -> Init a (x, y)
+composeInit f s i j = rmap (\x -> (x, peel j f (s x))) i
 
 composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
-composeFold (Fold i f) (Fold j g) = Fold (composeInit g i j) $
-  \(b, c) a -> let b' = f b a in (b', g c b')
+composeFold (Fold i f s) (Fold j g t) = Fold (composeInit g s i j) h u
+  where h = \(x, y) a -> let x' = f x a in (x', g y (s x'))
+        u = \(x, y) -> (s x, t y)
 
 -- * Semigroupoid
 
