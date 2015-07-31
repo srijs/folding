@@ -38,6 +38,20 @@ import Control.Comonad.Cofree
 
 -- * Data Types
 
+-- ** Step Function
+
+-- | ':->:' is a bifunctor which is contravariant
+-- in the first argument, and invariant in the second.
+type a :->: b = b -> a -> b
+
+inmap :: (b -> a) -> (a :->: c) -> (b :->: c)
+inmap f g = \c b -> g c (f b)
+
+outmap :: (b -> c) -> (c -> b) -> (a :->: b) -> (a :->: c)
+outmap f f' g = \c a -> f (g (f' c) a)
+
+-- ** Initial Element
+
 data Init a b = Zero b | One (a -> b)
   deriving Functor
 
@@ -46,19 +60,21 @@ instance Profunctor Init where
   lmap f (One g)  = One (g . f)
   rmap = fmap
 
-peel :: Init a b -> (b -> a -> b) -> (a -> b)
+peel :: Init a b -> (a :->: b) -> (a -> b)
 peel (Zero b) f = f b
 peel (One f) _ = f
 
+-- ** Fold Types
+
 -- | 'Fold' is a bifunctor which is contravariant
 -- in the first argument, and invariant in the second.
-data Fold a b = Fold (Init a b) (b -> a -> b)
+data Fold a b = Fold (Init a b) (a :->: b)
 
-inmap :: (b -> a) -> Fold a c -> Fold b c
-inmap f (Fold i g) = Fold (lmap f i) $ \c b -> g c (f b)
+inmap' :: (b -> a) -> Fold a c -> Fold b c
+inmap' f (Fold i g) = Fold (lmap f i) (inmap f g)
 
-outmap :: (b -> c) -> (c -> b) -> Fold a b -> Fold a c
-outmap f f' (Fold i g) = Fold (rmap f i) $ \c a -> f (g (f' c) a)
+outmap' :: (b -> c) -> (c -> b) -> Fold a b -> Fold a c
+outmap' f f' (Fold i g) = Fold (rmap f i) (outmap f f' g)
 
 newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
 
@@ -76,7 +92,7 @@ combine (Folding f) (Folding g) = Folding $ combineF f g
   where combineF f' g' (a, a') = combineCofree (f' a) (g' a')
         combineCofree (b :< f') (b' :< g') = (b, b') :< combineF f' g'
 
-combineInit :: (b -> a -> b) -> (b' -> a' -> b') -> Init a b -> Init a' b' -> Init (a, a') (b, b')
+combineInit :: (a :->: b) -> (a' :->: b') -> Init a b -> Init a' b' -> Init (a, a') (b, b')
 combineInit _ _ (Zero b) (Zero b') = Zero (b, b')
 combineInit f g i j = One $ \(a, a') -> (peel i f a, peel j g a')
 
@@ -121,7 +137,7 @@ compose (Folding f) (Folding g) = Folding $ composeF f g
                            in composeCofree cofree (g' (extract cofree))
         composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
 
-composeInit :: (c -> b -> c) -> Init a b -> Init b c -> Init a (b, c)
+composeInit :: (b :->: c) -> Init a b -> Init b c -> Init a (b, c)
 composeInit g i j = rmap (\b -> (b, peel j g b)) i
 
 composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
