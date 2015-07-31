@@ -44,11 +44,15 @@ import Control.Comonad.Cofree
 -- in the first argument, and invariant in the second.
 type a :->: b = b -> a -> b
 
+-- | Maps the input of the step function contravariantly via @f@.
+-- Synonymous for @'rmap' ('lmap' f)@.
 inmap :: (b -> a) -> (a :->: c) -> (b :->: c)
-inmap f g = \c b -> g c (f b)
+inmap f = rmap (lmap f)
 
+-- | Maps the output of the step function invariantly via @f@ and @g@.
+-- Synonymous for @'dimap' g ('rmap' f)@.
 outmap :: (b -> c) -> (c -> b) -> (a :->: b) -> (a :->: c)
-outmap f f' g = \c a -> f (g (f' c) a)
+outmap f g = dimap g (rmap f)
 
 -- ** Initial Element
 
