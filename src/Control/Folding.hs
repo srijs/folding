@@ -46,9 +46,9 @@ instance Profunctor Init where
   lmap f (One g)  = One (g . f)
   rmap = fmap
 
-peel :: Init a b -> (b -> a -> b) -> Init a b
-peel (Zero b) f = One (f b)
-peel (One f) _ = One f
+peel :: Init a b -> (b -> a -> b) -> (a -> b)
+peel (Zero b) f = f b
+peel (One f) _ = f
 
 -- | 'Fold' is a bifunctor which is contravariant
 -- in the first argument, and invariant in the second.
