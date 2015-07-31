@@ -77,10 +77,10 @@ combine (Folding f) (Folding g) = Folding $ combineF f g
         combineCofree (b :< f') (b' :< g') = (b, b') :< combineF f' g'
 
 combineInit :: (b -> a -> b) -> (b' -> a' -> b') -> Init a b -> Init a' b' -> Init (a, a') (b, b')
-combineInit f g (Zero b) (Zero b') = Zero (b, b')
-combineInit f g (Zero b) (One g')  = One $ \(a, a') -> (f b a, g' a')
-combineInit f g (One f') (Zero b') = One $ \(a, a') -> (f' a, g b' a')
-combineInit f g (One f') (One g')  = One $ \(a, a') -> (f' a, g' a')
+combineInit _ _ (Zero b) (Zero b') = Zero (b, b')
+combineInit f _ (Zero b) (One g')  = One $ \(a, a') -> (f b a, g' a')
+combineInit _ g (One f') (Zero b') = One $ \(a, a') -> (f' a, g b' a')
+combineInit _ _ (One f') (One g')  = One $ \(a, a') -> (f' a, g' a')
 
 combineFold :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combineFold (Fold i f) (Fold j g) = Fold (combineInit f g i j) $
