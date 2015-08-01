@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantification, ViewPatterns, TypeOperators, MultiParamTypeClasses, TypeFamilies #-}
+{-# LANGUAGE ExistentialQuantification, TypeOperators, MultiParamTypeClasses, TypeFamilies #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE GADTs #-}
 
@@ -65,14 +65,14 @@ instance Profunctor Init where
   lmap f (One g)  = One (g . f)
   rmap = fmap
 
-peel :: Init a b -> (a :->: b) -> (a -> b)
+peel :: Init a b -> (a :->: b) -> a -> b
 peel (Zero b) f = f b
 peel (One f) _ = f
 
 -- ** Fold Types
 
 data Fold a b where
-  Fold :: (Init a x) -> (a :->: x) -> (x -> b) -> Fold a b
+  Fold :: Init a x -> (a :->: x) -> (x -> b) -> Fold a b
 
 fold :: (a :->: b) -> b -> Fold a b
 fold f b = Fold (Zero b) f id
@@ -87,117 +87,47 @@ instance Profunctor Fold where
   lmap f (Fold i g s) = Fold (lmap f i) (inmap f g) s
   rmap = fmap
 
-newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
-
-newtype Folding a b = Folding (a -> Cofree ((->) a) b)
-
--- * Functor
-
-instance Functor (Folding a) where
-  fmap f (Folding g) = Folding $ fmap (fmap f) g
-
--- * Combine
-
-combine :: Folding a b -> Folding a' b' -> Folding (a, a') (b, b')
-combine (Folding f) (Folding g) = Folding $ combineF f g
-  where combineF f' g' (a, a') = combineCofree (f' a) (g' a')
-        combineCofree (b :< f') (b' :< g') = (b, b') :< combineF f' g'
-
 combineInit :: (a :->: b) -> (a' :->: b') -> Init a b -> Init a' b' -> Init (a, a') (b, b')
 combineInit _ _ (Zero b) (Zero b') = Zero (b, b')
-combineInit f g i j = One $ \(a, a') -> (peel i f a, peel j g a')
+combineInit f g i j = One $ \as -> (peel i f, peel j g) <<*>> as
 
-combineFold :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combineFold (Fold i f s) (Fold j g t) = Fold (combineInit f g i j) h u
-  where h = \(b, b') (a, a') -> (f b a, g b' a')
-        u = \(x, x') -> (s x, t x')
-
--- * Profunctor
-
-instance Profunctor Folding where
-  lmap f (Folding g) = Folding $ lmapCofree . g . f
-    where lmapCofree (b :< g') = b :< lmapCofree . g'. f
-  rmap = fmap
-
--- * Zip
-
-instance Zip (Folding a) where
-  zip folding = lmap (\a -> (a, a)) . combine folding
+combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
+combine (Fold i f s) (Fold j g t) = Fold k h u
+  where k = combineInit f g i j
+        h xs as = (f, g) <<*>> xs <<*>> as
+        u xs = (s, t) <<*>> xs
 
 instance Zip (Fold a) where
-  zip ld = lmap (\a -> (a, a)) . combineFold ld
-
--- * Pointed
-
-instance Pointed (Folding a) where
-  point b = Folding pointCofree
-    where pointCofree _ = b :< pointCofree
+  zip ld = lmap (\a -> (a, a)) . combine ld
 
 instance Pointed (Fold a) where
   point b = Fold (Zero ()) (\_ _ -> ()) (const b)
 
--- * Apply
-
-instance Apply (Folding a) where
-  (<.>) = zap
-
 instance Apply (Fold a) where
   (<.>) = zap
-
--- * Applicative
-
-instance Applicative (Folding a) where
-  pure = point
-  (<*>) = zap
 
 instance Applicative (Fold a) where
   pure = point
   (<*>) = zap
 
--- * Compose
-
-compose :: Folding a b -> Folding b c -> Folding a (b, c)
-compose (Folding f) (Folding g) = Folding $ composeF f g
-  where composeF f' g' a = let cofree = f' a
-                           in composeCofree cofree (g' (extract cofree))
-        composeCofree (b :< f') (c :< g') = (b, c) :< composeF f' g'
-
 composeInit :: (b :->: y) -> (x -> b) -> Init a x -> Init b y -> Init a (x, y)
 composeInit f s i j = rmap (\x -> (x, peel j f (s x))) i
 
-composeFold :: Fold a b -> Fold b c -> Fold a (b, c)
-composeFold (Fold i f s) (Fold j g t) = Fold (composeInit g s i j) h u
-  where h = \(x, y) a -> let x' = f x a in (x', g y (s x'))
-        u = \(x, y) -> (s x, t y)
-
--- * Semigroupoid
-
-instance Semigroupoid Folding where
-  o foldingBC foldingAB = snd <$> compose foldingAB foldingBC
+compose :: Fold a b -> Fold b c -> Fold a (b, c)
+compose (Fold i f s) (Fold j g t) = Fold k h u
+  where k = composeInit g s i j
+        h (x, y) a = let x' = f x a in (x', g y (s x'))
+        u xy = (s, t) <<*>> xy
 
 instance Semigroupoid Fold where
-  o foldBC foldAB = snd <$> composeFold foldAB foldBC
-
--- * Category
-
-instance Category Folding where
-  id = Folding idCofree
-    where idCofree a = a :< idCofree
-  (.) = o
+  o foldBC foldAB = snd <$> compose foldAB foldBC
 
 instance Category Fold where
   id = Fold (One id) (const id) id
   (.) = o
 
--- * Arrow
-
-instance Arrow Folding where
-  first folding = combine folding id
-  arr f = Folding arrCofree
-    where arrCofree a = f a :< arrCofree
-
 instance Arrow Fold where
-  first = flip combineFold id
+  first = flip combine id
   arr f = Fold (One f) (const f) id
 
 {-
