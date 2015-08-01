@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification, ViewPatterns, TypeOperators, MultiParamTypeClasses, TypeFamilies #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GADTs #-}
 
 module Control.Folding where
 
@@ -70,9 +71,8 @@ peel (One f) _ = f
 
 -- ** Fold Types
 
--- | 'Fold' is a bifunctor which is contravariant
--- in the first argument, and invariant in the second.
-data Fold a b = forall x. Fold (Init a x) (a :->: x) (x -> b)
+data Fold a b where
+  Fold :: (Init a x) -> (a :->: x) -> (x -> b) -> Fold a b
 
 fold :: (a :->: b) -> b -> Fold a b
 fold f b = Fold (Zero b) f id
@@ -80,9 +80,12 @@ fold f b = Fold (Zero b) f id
 fold1 :: (a :->: b) -> (a -> b) -> Fold a b
 fold1 f g = Fold (One g) f id
 
+instance Functor (Fold a) where
+  fmap f (Fold i g s) = Fold i g (f . s)
+
 instance Profunctor Fold where
   lmap f (Fold i g s) = Fold (lmap f i) (inmap f g) s
-  rmap f (Fold i g s) = Fold i g (f . s)
+  rmap = fmap
 
 newtype Foldette a b c d = Foldette (Fold a b -> Fold c d)
 
@@ -121,20 +124,33 @@ instance Profunctor Folding where
 instance Zip (Folding a) where
   zip folding = lmap (\a -> (a, a)) . combine folding
 
+instance Zip (Fold a) where
+  zip ld = lmap (\a -> (a, a)) . combineFold ld
+
 -- * Pointed
 
 instance Pointed (Folding a) where
   point b = Folding pointCofree
     where pointCofree _ = b :< pointCofree
 
+instance Pointed (Fold a) where
+  point b = Fold (Zero ()) (\_ _ -> ()) (const b)
+
 -- * Apply
 
 instance Apply (Folding a) where
   (<.>) = zap
 
+instance Apply (Fold a) where
+  (<.>) = zap
+
 -- * Applicative
 
 instance Applicative (Folding a) where
+  pure = point
+  (<*>) = zap
+
+instance Applicative (Fold a) where
   pure = point
   (<*>) = zap
 
@@ -159,11 +175,18 @@ composeFold (Fold i f s) (Fold j g t) = Fold (composeInit g s i j) h u
 instance Semigroupoid Folding where
   o foldingBC foldingAB = snd <$> compose foldingAB foldingBC
 
+instance Semigroupoid Fold where
+  o foldBC foldAB = snd <$> composeFold foldAB foldBC
+
 -- * Category
 
 instance Category Folding where
   id = Folding idCofree
     where idCofree a = a :< idCofree
+  (.) = o
+
+instance Category Fold where
+  id = Fold (One id) (const id) id
   (.) = o
 
 -- * Arrow
@@ -172,6 +195,10 @@ instance Arrow Folding where
   first folding = combine folding id
   arr f = Folding arrCofree
     where arrCofree a = f a :< arrCofree
+
+instance Arrow Fold where
+  first = flip combineFold id
+  arr f = Fold (One f) (const f) id
 
 {-
 type instance Key (Fold a) = Integer
