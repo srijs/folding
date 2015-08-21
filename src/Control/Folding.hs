@@ -30,6 +30,7 @@ import Data.Profunctor
 import Data.Profunctor.Sieve
 import Data.Semigroupoid
 import Data.Foldable (Foldable, foldl)
+import qualified Data.List as List
 
 import Control.Applicative
 import Control.Arrow
@@ -95,7 +96,7 @@ combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combine (Fold i f s) (Fold j g t) = Fold k h u
   where k = combineInit f g i j
         h xs as = (f, g) <<*>> xs <<*>> as
-        u xs = (s, t) <<*>> xs
+        u xs = uncurry zip $ (s, t) <<*>> xs
 
 instance Zip (Fold a) where
   zip ld = lmap (\a -> (a, a)) . combine ld
