@@ -116,9 +116,9 @@ composeInit f s i j = rmap (\x -> (x, peel j f (s x))) i
 
 compose :: Fold a b -> Fold b c -> Fold a (b, c)
 compose (Fold i f s) (Fold j g t) = Fold k h u
-  where k = composeInit g s i j
-        h (x, y) a = let x' = f x a in (x', g y (s x'))
-        u xy = (s, t) <<*>> xy
+  where k = composeInit g (List.last . s) i j
+        h (x, y) a = let x' = f x a in (x', g y (List.last (s x')))
+        u xy = uncurry zip $ (s, t) <<*>> xy
 
 instance Semigroupoid Fold where
   o foldBC foldAB = snd <$> compose foldAB foldBC
