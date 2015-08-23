@@ -56,30 +56,16 @@ inmap f = rmap (lmap f)
 outmap :: (b -> c) -> (c -> b) -> (a :->: b) -> (a :->: c)
 outmap f g = dimap g (rmap f)
 
--- ** Initial Element
-
-data Init a b = Zero b | One (a -> b)
-  deriving Functor
-
-instance Profunctor Init where
-  lmap _ (Zero b) = Zero b
-  lmap f (One g)  = One (g . f)
-  rmap = fmap
-
-peel :: Init a b -> (a :->: b) -> a -> b
-peel (Zero b) f = f b
-peel (One f) _ = f
-
 -- ** Fold Types
 
 data Fold a b where
-  Fold :: Init a x -> (a :->: x) -> (x -> [b]) -> Fold a b
+  Fold :: x -> (a :->: x) -> (x -> [b]) -> Fold a b
 
 fold :: (a :->: b) -> b -> Fold a b
-fold f b = Fold (Zero b) f (:[])
+fold f b = Fold b f (:[])
 
 fold1 :: (a :->: b) -> (a -> b) -> Fold a b
-fold1 f g = Fold (Zero Nothing) f' Maybe.maybeToList
+fold1 f g = Fold Nothing f' Maybe.maybeToList
   where f' Nothing a = Just $ g a
         f' (Just b) a = Just $ f b a
 
@@ -87,16 +73,12 @@ instance Functor (Fold a) where
   fmap f (Fold i g s) = Fold i g (fmap (fmap f) s)
 
 instance Profunctor Fold where
-  lmap f (Fold i g s) = Fold (lmap f i) (inmap f g) s
+  lmap f (Fold i g s) = Fold i (inmap f g) s
   rmap = fmap
-
-combineInit :: (a :->: b) -> (a' :->: b') -> Init a b -> Init a' b' -> Init (a, a') (b, b')
-combineInit _ _ (Zero b) (Zero b') = Zero (b, b')
-combineInit f g i j = One $ \as -> (peel i f, peel j g) <<*>> as
 
 combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combine (Fold i f s) (Fold j g t) = Fold k h u
-  where k = combineInit f g i j
+  where k = (i, j)
         h xs as = (f, g) <<*>> xs <<*>> as
         u xs = uncurry zip $ (s, t) <<*>> xs
 
@@ -104,7 +86,7 @@ instance Zip (Fold a) where
   zip ld = lmap (\a -> (a, a)) . combine ld
 
 instance Pointed (Fold a) where
-  point b = Fold (Zero ()) (\_ _ -> ()) (const [b])
+  point b = Fold () (\_ _ -> ()) (const [b])
 
 instance Apply (Fold a) where
   (<.>) = zap
@@ -113,12 +95,9 @@ instance Applicative (Fold a) where
   pure = point
   (<*>) = zap
 
-composeInit :: (b :->: y) -> (x -> b) -> Init a x -> Init b y -> Init a (x, y)
-composeInit f s i j = rmap (\x -> (x, peel j f (s x))) i
-
 compose :: Fold a b -> Fold b c -> Fold a (b, c)
 compose (Fold i f s) (Fold j g t) = Fold k h u
-  where k = composeInit g (List.last . s) i j
+  where k = (i, g j (List.last (s i)))
         h (x, y) a = let x' = f x a in (x', g y (List.last (s x')))
         u xy = uncurry zip $ (s, t) <<*>> xy
 
