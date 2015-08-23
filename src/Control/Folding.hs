@@ -23,9 +23,9 @@ import Data.Functor.Identity
 import Data.Functor.Apply
 import Data.Functor.Extend
 import Data.Functor.Contravariant
-import Data.Bifunctor
+import Data.Bifunctor (bimap)
 import Data.Bifunctor.Biff
-import Data.Biapplicative
+import Data.Biapplicative (Biapplicative, bipure, (<<*>>), biliftA2)
 import Data.Bitraversable
 import Data.Key
 import Data.Pointed
@@ -94,6 +94,9 @@ instance Functor (Fold a) where
 instance Profunctor Fold where
   lmap f (Fold i g s) = Fold i (inmap f g) s
   rmap = fmap
+
+instance Strong Fold where
+  first' = first
 
 instance Zip (Fold a) where
   zip ld = lmap (\a -> (a, a)) . combine ld
