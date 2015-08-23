@@ -126,12 +126,12 @@ instance Semigroupoid Fold where
   o foldBC foldAB = snd <$> compose foldAB foldBC
 
 instance Category Fold where
-  id = Fold (One id) (const id) (:[])
+  id = fold1 (const id) id
   (.) = o
 
 instance Arrow Fold where
   first = flip combine id
-  arr f = Fold (One f) (const f) (:[])
+  arr f = fold1 (const f) f
 
 {-
 type instance Key (Fold a) = Integer
