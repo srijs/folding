@@ -26,6 +26,7 @@ import Data.Functor.Contravariant
 import Data.Bifunctor
 import Data.Bifunctor.Biff
 import Data.Biapplicative
+import Data.Bitraversable
 import Data.Key
 import Data.Pointed
 import Data.Profunctor
@@ -113,13 +114,13 @@ compose (Fold i f s) (Fold j g t) = Fold k h u
         h (x, y) a = let x' = f x a in (x', List.foldl g y (s x'))
         u = uncurry zip . bimap s t
 
+combine :: (Biapplicative p, Bitraversable p) => Fold a b -> Fold a' b' -> Fold (p a a') (p b b')
+combine (Fold i f s) (Fold j g t) = Fold (bipure i j) (biliftA2 f g) (bitraverse s t)
+
 these :: Fold a b -> Fold a' b' -> Fold (These a a') (b, b')
 these (Fold i f s) (Fold j g t) = Fold (i, j) h u
   where h (x, y) = fromThese x y . bimap (f x) (g y)
         u = uncurry zip . bimap s t
-
-combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combine fa fb = lmap fromTuple (these fa fb)
 
 choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
 choose fa fb = lmap fromEither (these fa fb)
