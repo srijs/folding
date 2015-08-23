@@ -78,51 +78,51 @@ fromTuple = uncurry bipure
 
 -- ** Fold
 
-data Fold a b where
-  Fold :: x -> Step a x -> (x -> [b]) -> Fold a b
+data Fold f a b where
+  Fold :: x -> Step a x -> (x -> f b) -> Fold f a b
 
-fold :: Step a b -> b -> Fold a b
-fold f b = Fold b f (:[])
+fold :: Applicative f => Step a b -> b -> Fold f a b
+fold f b = Fold b f pure
 
-fold1 :: Step a b -> (a -> b) -> Fold a b
-fold1 f g = Fold Nothing f' Maybe.maybeToList
+fold1 :: Alternative f => Step a b -> (a -> b) -> Fold f a b
+fold1 f g = Fold Nothing f' (Maybe.maybe empty pure)
   where f' Nothing a = Just $ g a
         f' (Just b) a = Just $ f b a
 
-instance Functor (Fold a) where
+instance Functor f => Functor (Fold f a) where
   fmap f (Fold i g s) = Fold i g (fmap (fmap f) s)
 
-instance Profunctor Fold where
+instance Functor f => Profunctor (Fold f) where
   lmap f (Fold i g s) = Fold i (inmap f g) s
   rmap = fmap
 
-instance Strong Fold where
+instance (Foldable f, Alternative f) => Strong (Fold f) where
   first' = first
 
-instance Zip (Fold a) where
+instance Applicative f => Zip (Fold f a) where
   zip ld = lmap (\a -> (a, a)) . combine ld
 
-instance Pointed (Fold a) where
-  point b = Fold () (\_ _ -> ()) (const [b])
+instance Applicative f => Pointed (Fold f a) where
+  point b = Fold () (\_ _ -> ()) (const $ pure b)
 
-instance Apply (Fold a) where
+instance Applicative f => Apply (Fold f a) where
   (<.>) = zap
 
-instance Applicative (Fold a) where
+instance Applicative f => Applicative (Fold f a) where
   pure = point
   (<*>) = zap
 
-instance Semigroupoid Fold where
+instance Foldable f => Semigroupoid (Fold f) where
   (Fold j g t) `o` (Fold i f s) = Fold k h u
-    where k = (i, List.foldl g j (s i))
-          h (x, y) a = let x' = f x a in (x', List.foldl g y (s x'))
+    where k = (i, foldl g j (s i))
+          h (x, y) a = let x' = f x a in (x', foldl g y (s x'))
           u = snd . bimap s t
 
-instance Category Fold where
+instance (Alternative f, Foldable f) => Category (Fold f) where
   id = fold1 (const id) id
   (.) = o
 
-instance Arrow Fold where
+instance (Alternative f, Foldable f) => Arrow (Fold f) where
   first = flip combine id
   arr f = fold1 (const f) f
 
@@ -130,15 +130,15 @@ instance Arrow Fold where
 
 -- | Combines two folds using any biapplicative and bitraversable bifunctor.
 -- A generalization of @'***'@. Works with @(,)@, @'Const'@, @'These'@, etc.
-combine :: (Biapplicative p, Bitraversable p) => Fold a b -> Fold a' b' -> Fold (p a a') (p b b')
+combine :: (Applicative f, Biapplicative p, Bitraversable p) => Fold f a b -> Fold f a' b' -> Fold f (p a a') (p b b')
 combine (Fold i f s) (Fold j g t) = Fold (bipure i j) (biliftA2 f g) (bitraverse s t)
 
-these :: Fold a b -> Fold a' b' -> Fold (These a a') (b, b')
+these :: Zip f => Fold f a b -> Fold f a' b' -> Fold f (These a a') (b, b')
 these (Fold i f s) (Fold j g t) = Fold (i, j) h u
   where h (x, y) = fromThese x y . bimap (f x) (g y)
         u = uncurry zip . bimap s t
 
-choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
+choose :: Zip f => Fold f a b -> Fold f a' b' -> Fold f (Either a a') (b, b')
 choose fa fb = lmap fromEither (these fa fb)
 
 {-
