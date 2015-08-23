@@ -1,3 +1,5 @@
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE GADTs #-}
 
 module Control.Folding
@@ -36,7 +38,6 @@ import Data.Profunctor
 import Data.Profunctor.Sieve
 import Data.Semigroupoid
 import Data.Foldable (Foldable, foldl)
-import qualified Data.List as List
 
 import Control.Applicative
 import Control.Arrow
@@ -95,6 +96,9 @@ instance Functor f => Functor (Fold f a) where
 instance Functor f => Profunctor (Fold f) where
   lmap f (Fold i g s) = Fold i (inmap f g) s
   rmap = fmap
+
+instance Functor f => Sieve (Fold f) f where
+  sieve (Fold i f s) a = s (f i a)
 
 instance (Foldable f, Alternative f) => Strong (Fold f) where
   first' = first
