@@ -97,8 +97,8 @@ instance Applicative (Fold a) where
 
 compose :: Fold a b -> Fold b c -> Fold a (b, c)
 compose (Fold i f s) (Fold j g t) = Fold k h u
-  where k = (i, g j (List.last (s i)))
-        h (x, y) a = let x' = f x a in (x', g y (List.last (s x')))
+  where k = (i, List.foldl g j (s i))
+        h (x, y) a = let x' = f x a in (x', List.foldl g y (s x'))
         u xy = uncurry zip $ (s, t) <<*>> xy
 
 instance Semigroupoid Fold where
