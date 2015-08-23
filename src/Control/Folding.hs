@@ -119,12 +119,12 @@ compose :: Fold a b -> Fold b c -> Fold a (b, c)
 compose (Fold i f s) (Fold j g t) = Fold k h u
   where k = (i, List.foldl g j (s i))
         h (x, y) a = let x' = f x a in (x', List.foldl g y (s x'))
-        u xy = uncurry zip $ (s, t) <<*>> xy
+        u = uncurry zip . bimap s t
 
 these :: Fold a b -> Fold a' b' -> Fold (These a a') (b, b')
 these (Fold i f s) (Fold j g t) = Fold (i, j) h u
   where h (x, y) = fromThese x y . bimap (f x) (g y)
-        u xy = uncurry zip $ (s, t) <<*>> xy
+        u = uncurry zip . bimap s t
 
 combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
 combine fa fb = lmap fromTuple (these fa fb)
