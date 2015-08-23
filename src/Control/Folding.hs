@@ -56,6 +56,32 @@ inmap f = rmap (lmap f)
 outmap :: (b -> c) -> (c -> b) -> (a :->: b) -> (a :->: c)
 outmap f g = dimap g (rmap f)
 
+-- ** These
+
+-- | Represents the datatype /(unit + a + b + ab)/,
+-- which is isomorphic to @(Maybe (Either (Either a b) (a, b)))@.
+data These a b = None | This a | That b | These a b
+  deriving Functor
+
+instance Bifunctor These where
+  bimap f _ (This a) = This $ f a
+  bimap _ g (That b) = That $ g b
+  bimap f g (These a b) = These (f a) (g b)
+  bimap _ _ None = None
+
+fromThese :: a -> b -> These a b -> (a, b)
+fromThese a b None = (a, b)
+fromThese _ b (This a) = (a, b)
+fromThese a _ (That b) = (a, b)
+fromThese _ _ (These a b) = (a, b)
+
+fromEither :: Either a b -> These a b
+fromEither (Left a) = This a
+fromEither (Right b) = That b
+
+fromTuple :: (a, b) -> These a b
+fromTuple (a, b) = These a b
+
 -- ** Fold Types
 
 data Fold a b where
@@ -76,12 +102,6 @@ instance Profunctor Fold where
   lmap f (Fold i g s) = Fold i (inmap f g) s
   rmap = fmap
 
-combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combine (Fold i f s) (Fold j g t) = Fold k h u
-  where k = (i, j)
-        h xs as = (f, g) <<*>> xs <<*>> as
-        u xs = uncurry zip $ (s, t) <<*>> xs
-
 instance Zip (Fold a) where
   zip ld = lmap (\a -> (a, a)) . combine ld
 
@@ -100,6 +120,17 @@ compose (Fold i f s) (Fold j g t) = Fold k h u
   where k = (i, List.foldl g j (s i))
         h (x, y) a = let x' = f x a in (x', List.foldl g y (s x'))
         u xy = uncurry zip $ (s, t) <<*>> xy
+
+these :: Fold a b -> Fold a' b' -> Fold (These a a') (b, b')
+these (Fold i f s) (Fold j g t) = Fold (i, j) h u
+  where h (x, y) = fromThese x y . bimap (f x) (g y)
+        u xy = uncurry zip $ (s, t) <<*>> xy
+
+combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
+combine fa fb = lmap fromTuple (these fa fb)
+
+choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
+choose fa fb = lmap fromEither (these fa fb)
 
 instance Semigroupoid Fold where
   o foldBC foldAB = snd <$> compose foldAB foldBC
