@@ -79,7 +79,9 @@ fold :: (a :->: b) -> b -> Fold a b
 fold f b = Fold (Zero b) f (:[])
 
 fold1 :: (a :->: b) -> (a -> b) -> Fold a b
-fold1 f g = Fold (One g) f (:[])
+fold1 f g = Fold (Zero Nothing) f' Maybe.maybeToList
+  where f' Nothing a = Just $ g a
+        f' (Just b) a = Just $ f b a
 
 instance Functor (Fold a) where
   fmap f (Fold i g s) = Fold i g (fmap (fmap f) s)
