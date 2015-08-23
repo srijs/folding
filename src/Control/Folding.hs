@@ -1,5 +1,6 @@
 {-# LANGUAGE ExistentialQuantification, TypeOperators, MultiParamTypeClasses, TypeFamilies #-}
 {-# LANGUAGE DeriveFunctor #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
 
 module Control.Folding where
@@ -23,6 +24,7 @@ import Data.Functor.Apply
 import Data.Functor.Extend
 import Data.Functor.Contravariant
 import Data.Bifunctor
+import Data.Bifunctor.Biff
 import Data.Biapplicative
 import Data.Key
 import Data.Pointed
@@ -59,28 +61,18 @@ outmap f g = dimap g (rmap f)
 -- ** These
 
 -- | Represents the datatype /(unit + a + b + ab)/,
--- which is isomorphic to @(Maybe (Either (Either a b) (a, b)))@.
-data These a b = None | This a | That b | These a b
-  deriving Functor
-
-instance Bifunctor These where
-  bimap f _ (This a) = This $ f a
-  bimap _ g (That b) = That $ g b
-  bimap f g (These a b) = These (f a) (g b)
-  bimap _ _ None = None
+-- which is isomorphic to @('Data.Bifunctor.Biff.Biff' (,) Maybe Maybe a b)@.
+type These a b = Biff (,) Maybe Maybe a b
 
 fromThese :: a -> b -> These a b -> (a, b)
-fromThese a b None = (a, b)
-fromThese _ b (This a) = (a, b)
-fromThese a _ (That b) = (a, b)
-fromThese _ _ (These a b) = (a, b)
+fromThese a b = bimap (Maybe.fromMaybe a) (Maybe.fromMaybe b) . runBiff
 
 fromEither :: Either a b -> These a b
-fromEither (Left a) = This a
-fromEither (Right b) = That b
+fromEither (Left a) = Biff (Just a, Nothing)
+fromEither (Right b) = Biff (Nothing, Just b)
 
 fromTuple :: (a, b) -> These a b
-fromTuple (a, b) = These a b
+fromTuple = Biff . bimap Just Just
 
 -- ** Fold Types
 
