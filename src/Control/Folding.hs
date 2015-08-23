@@ -61,18 +61,18 @@ outmap f g = dimap g (rmap f)
 -- ** These
 
 -- | Represents the datatype /(unit + a + b + ab)/,
--- which is isomorphic to @('Data.Bifunctor.Biff.Biff' (,) Maybe Maybe a b)@.
+-- which is isomorphic to @('Maybe' a, 'Maybe' b)@.
 type These a b = Biff (,) Maybe Maybe a b
 
 fromThese :: a -> b -> These a b -> (a, b)
 fromThese a b = bimap (Maybe.fromMaybe a) (Maybe.fromMaybe b) . runBiff
 
-fromEither :: Either a b -> These a b
-fromEither (Left a) = Biff (Just a, Nothing)
-fromEither (Right b) = Biff (Nothing, Just b)
+fromEither :: (Biapplicative p, Alternative f, Alternative g) => Either a b -> Biff p f g a b
+fromEither (Left a) = Biff $ bipure (pure a) empty
+fromEither (Right b) = Biff $ bipure empty (pure b)
 
-fromTuple :: (a, b) -> These a b
-fromTuple = Biff . bimap Just Just
+fromTuple :: (Biapplicative p, Applicative f, Applicative g) => (a, b) -> Biff p f g a b
+fromTuple = uncurry bipure
 
 -- ** Fold Types
 
