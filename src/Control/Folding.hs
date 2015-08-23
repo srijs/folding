@@ -1,9 +1,16 @@
-{-# LANGUAGE ExistentialQuantification, TypeOperators, MultiParamTypeClasses, TypeFamilies #-}
-{-# LANGUAGE DeriveFunctor #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE GADTs #-}
 
-module Control.Folding where
+module Control.Folding
+( -- * Data Types
+  -- ** Step
+    Step, inmap, outmap
+  -- ** Fold
+  , Fold(..), fold, fold1
+  -- ** These
+  , These, fromThese, fromEither, fromTuple
+  -- * Composition
+  , combine, these, choose
+) where
 
 import Prelude hiding
   ( any, all, and, or, sum, product
@@ -37,20 +44,20 @@ import Control.Category
 
 -- * Data Types
 
--- ** Step Function
+-- ** Step
 
--- | ':->:' is a bifunctor which is contravariant
+-- | A bifunctor which is contravariant
 -- in the first argument, and invariant in the second.
-type a :->: b = b -> a -> b
+type Step a b = b -> a -> b
 
 -- | Maps the input of the step function contravariantly via @f@.
 -- Synonymous for @'rmap' ('lmap' f)@.
-inmap :: (b -> a) -> (a :->: c) -> (b :->: c)
+inmap :: (b -> a) -> Step a c -> Step b c
 inmap f = rmap (lmap f)
 
 -- | Maps the output of the step function invariantly via @f@ and @g@.
 -- Synonymous for @'dimap' g ('rmap' f)@.
-outmap :: (b -> c) -> (c -> b) -> (a :->: b) -> (a :->: c)
+outmap :: (b -> c) -> (c -> b) -> Step a b -> Step a c
 outmap f g = dimap g (rmap f)
 
 -- ** These
@@ -69,15 +76,15 @@ fromEither (Right b) = Biff $ bipure empty (pure b)
 fromTuple :: (Biapplicative p, Applicative f, Applicative g) => (a, b) -> Biff p f g a b
 fromTuple = uncurry bipure
 
--- ** Fold Types
+-- ** Fold
 
 data Fold a b where
-  Fold :: x -> (a :->: x) -> (x -> [b]) -> Fold a b
+  Fold :: x -> Step a x -> (x -> [b]) -> Fold a b
 
-fold :: (a :->: b) -> b -> Fold a b
+fold :: Step a b -> b -> Fold a b
 fold f b = Fold b f (:[])
 
-fold1 :: (a :->: b) -> (a -> b) -> Fold a b
+fold1 :: Step a b -> (a -> b) -> Fold a b
 fold1 f g = Fold Nothing f' Maybe.maybeToList
   where f' Nothing a = Just $ g a
         f' (Just b) a = Just $ f b a
@@ -105,12 +112,24 @@ instance Applicative (Fold a) where
   pure = point
   (<*>) = zap
 
-compose :: Fold a b -> Fold b c -> Fold a (b, c)
-compose (Fold i f s) (Fold j g t) = Fold k h u
-  where k = (i, List.foldl g j (s i))
-        h (x, y) a = let x' = f x a in (x', List.foldl g y (s x'))
-        u = uncurry zip . bimap s t
+instance Semigroupoid Fold where
+  (Fold j g t) `o` (Fold i f s) = Fold k h u
+    where k = (i, List.foldl g j (s i))
+          h (x, y) a = let x' = f x a in (x', List.foldl g y (s x'))
+          u = snd . bimap s t
 
+instance Category Fold where
+  id = fold1 (const id) id
+  (.) = o
+
+instance Arrow Fold where
+  first = flip combine id
+  arr f = fold1 (const f) f
+
+-- * Composition
+
+-- | Combines two folds using any biapplicative and bitraversable bifunctor.
+-- A generalization of @'***'@. Works with @(,)@, @'Const'@, @'These'@, etc.
 combine :: (Biapplicative p, Bitraversable p) => Fold a b -> Fold a' b' -> Fold (p a a') (p b b')
 combine (Fold i f s) (Fold j g t) = Fold (bipure i j) (biliftA2 f g) (bitraverse s t)
 
@@ -121,17 +140,6 @@ these (Fold i f s) (Fold j g t) = Fold (i, j) h u
 
 choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
 choose fa fb = lmap fromEither (these fa fb)
-
-instance Semigroupoid Fold where
-  o foldBC foldAB = snd <$> compose foldAB foldBC
-
-instance Category Fold where
-  id = fold1 (const id) id
-  (.) = o
-
-instance Arrow Fold where
-  first = flip combine id
-  arr f = fold1 (const f) f
 
 {-
 type instance Key (Fold a) = Integer
