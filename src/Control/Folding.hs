@@ -12,10 +12,6 @@ import Prelude hiding
   , minimum, take, drop, id, (.)
   )
 
-import Data.Serialize
-import Data.ByteString (ByteString)
-
-import Data.Conduit (Sink, await)
 import Data.Copointed
 import qualified Data.Maybe as Maybe
 import Data.Monoid
@@ -25,7 +21,7 @@ import Data.Functor.Extend
 import Data.Functor.Contravariant
 import Data.Bifunctor (bimap)
 import Data.Bifunctor.Biff
-import Data.Biapplicative (Biapplicative, bipure, (<<*>>), biliftA2)
+import Data.Biapplicative (Biapplicative, bipure, biliftA2)
 import Data.Bitraversable
 import Data.Key
 import Data.Pointed
@@ -38,8 +34,6 @@ import qualified Data.List as List
 import Control.Applicative
 import Control.Arrow
 import Control.Category
-import Control.Comonad
-import Control.Comonad.Cofree
 
 -- * Data Types
 
