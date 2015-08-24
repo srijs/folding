@@ -13,7 +13,7 @@ module Control.Folding
   -- * Composition
   , combine, these, choose
   -- * Running
-  , run
+  , run, scan
   -- * Folds
   , concat, head, last
   , and, or, sum, product
@@ -45,7 +45,7 @@ import Data.Pointed
 import Data.Profunctor
 import Data.Profunctor.Sieve
 import Data.Semigroupoid
-import Data.Foldable (Foldable, foldl)
+import Data.Foldable (Foldable, foldl, toList)
 
 import Control.Applicative
 import Control.Arrow
@@ -166,6 +166,9 @@ choose fa fb = lmap fromEither (these fa fb)
 
 run :: Foldable g => Fold f a b -> g a -> f b
 run (Fold i f s) as = s $ foldl f i as
+
+scan :: Foldable g => Fold f a b -> g a -> [f b]
+scan (Fold i f s) as = map s $ scanl f i $ toList as
 
 -- * Folds
 
