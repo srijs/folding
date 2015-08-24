@@ -7,16 +7,24 @@ module Control.Folding
   -- ** Step
     Step, inmap, outmap
   -- ** Fold
-  , Fold(..), fold, foldM, fold1, fold1M
+  , Fold(..), fold, foldM, fold1
   -- ** These
   , These, fromThese, fromEither, fromTuple
   -- * Composition
   , combine, these, choose
+  -- * Running
+  , run
+  -- * Folds
+  , concat, head, last
+  , and, or, sum, product
+  , all, any, null, length
+  , maximum, minimum, elem, notElem
 ) where
 
 import Prelude hiding
   ( any, all, and, or, sum, product
   , zip, length, head, last, elem
+  , notElem, concat, null, zipWith
   , maximum, maybe, foldl, filter
   , minimum, take, drop, id, (.)
   )
@@ -94,14 +102,10 @@ foldM f b = Fold b (\m a -> m >>= flip f a) id
 -- | Constructs a fold from a step function.
 --   The fold will produce @'empty'@ until it is fed with
 --   the first @a@.
-fold1 :: Alternative f => Step a b -> Fold f a b
-fold1 f = fold f empty
-
--- | Constructs a fold from a monadic step function.
---   The fold will produce @'mzero'@ until it is fed with
---   the first @a@.
-fold1M :: MonadPlus m => (b -> a -> m b) -> Fold m a b
-fold1M f = foldM f mzero
+fold1 :: Alternative f => Step a a -> Fold f a a
+fold1 f = Fold Nothing f' (Maybe.fromMaybe empty)
+  where f' Nothing a = Just $ pure a
+        f' (Just b) a = Just $ liftA (`f` a) b
 
 instance Functor f => Functor (Fold f a) where
   fmap f (Fold i g s) = Fold i g (fmap (fmap f) s)
@@ -136,12 +140,12 @@ instance Foldable f => Semigroupoid (Fold f) where
           u = snd . bimap s t
 
 instance (Alternative f, Foldable f) => Category (Fold f) where
-  id = arr id
+  id = fold1 (const id)
   (.) = o
 
 instance (Alternative f, Foldable f) => Arrow (Fold f) where
   first = flip combine id
-  arr f = fold1 (const f)
+  arr f = lmap f id
 
 -- * Composition
 
@@ -158,187 +162,54 @@ these (Fold i f s) (Fold j g t) = Fold (i, j) h u
 choose :: Zip f => Fold f a b -> Fold f a' b' -> Fold f (Either a a') (b, b')
 choose fa fb = lmap fromEither (these fa fb)
 
-{-
-type instance Key (Fold a) = Integer
-
-instance Keyed (Fold a) where
-  mapWithKey f (Fold step init finalize) = Fold
-    (\(k, x) a -> (succ k, step x a))
-    (0, init)
-    (\(k, x) -> f k (finalize x))
-
-instance ZipWithKey (Fold a)
-
-instance Adjustable (Fold a) where
-  adjust f k fold = mapWithKey f' fold
-    where f' k' a | k == k' = f a
-                  | otherwise = a
-
--- * State Serialization
-
--- state :: Lens (Fold a b) (Either String (Fold a b)) ByteString ByteString
-state :: Functor f
-      => (ByteString -> f ByteString) -> Fold a b -> f (Either String (Fold a b))
-state f fold = fmap (runGet $ getState fold) (f . runPut $ putState fold)
-  where
-    putState (Fold _ init _ ) = put init
-    getState (Fold step _ finalize) = fmap (\init -> Fold step init finalize) get
-
-serializeState :: Fold a b -> ByteString
-serializeState = getConst . state Const
-
-unserializeState :: Fold a b -> ByteString -> Either String (Fold a b)
-unserializeState fd b = runIdentity $ state (const $ Identity b) fd
-
 -- * Running
 
-fun :: Fold :-> (->)
-fun (Fold step init finalize) = finalize . step init
-
-run :: Foldable f => Fold a b -> f a -> b
-run fold = extract . process fold
-
-sink :: Monad m => Fold a b -> Sink a m b
-sink fold = await >>= Maybe.maybe (return (extract fold))
-                                  (sink . processOne fold)
-
-processOne :: Fold a b -> a -> Fold a b
-processOne (Fold step init finalize) a
-  = Fold step (step init a) finalize
-
-process :: Foldable f => Fold a b -> f a -> Fold a b
-process (Fold step init finalize) as
-  = Fold step (foldl step init as) finalize
-
-scannify :: Fold a b -> Fold a [b]
-scannify (Fold step init finalize)
-  = Fold step' init' finalize'
-  where
-    step' (x:xs) a = step x a : x : xs
-    init' = [init]
-    finalize' = reverse . map finalize
-
--- * Construction
-
-fold :: Serialize b => (b -> a -> b) -> b -> Fold a b
-fold step init = Fold step init id
-
-fold1 :: Serialize a => (a -> a -> a) -> Fold1 a a
-fold1 step = fold (flip step') Nothing
-  where step' a = Just . Maybe.maybe a (flip step a)
-
-foldWithIndex :: Serialize b => (Int -> b -> a -> b) -> b -> Fold a b
-foldWithIndex f b = Fold step (0, b) snd
-  where step (idx, b) a = (idx + 1, f idx b a)
-
-foldM :: (Monad m, Serialize (m b)) =>
-         (b -> a -> m b) -> m b -> Fold a (m b)
-foldM step init = Fold step' init id
-  where step' mb a = mb >>= flip step a
-
-foldM_ :: (Monad m, Serialize (m b)) =>
-          (b -> a -> m b) -> m b -> Fold a (m ())
-foldM_ step init = rmap (>> return ()) (foldM step init)
-
--- * Composition
-
-compose :: Fold a b -> Fold b c -> Fold a (b, c)
-compose (Fold (flip -> stepL) initL finalizeL)
-         (Fold (flip -> stepR) initR finalizeR)
-  = Fold (flip step) init finalize
-  where
-    step a = apply . first (stepL a)
-    init = apply $ bipure initL initR
-    finalize = bimap finalizeL finalizeR
-    apply x = (second . stepR . finalizeL $ fst x) x
-
-combine :: Fold a b -> Fold a' b' -> Fold (a, a') (b, b')
-combine (Fold stepL initL finalizeL)
-        (Fold stepR initR finalizeR)
-  = Fold step init finalize
-  where
-    step = (<<*>>) . bimap stepL stepR
-    init = bipure initL initR
-    finalize = bimap finalizeL finalizeR
-
-choose :: Fold a b -> Fold a' b' -> Fold (Either a a') (b, b')
-choose (Fold (flip -> stepL) initL finalizeL)
-       (Fold (flip -> stepR) initR finalizeR)
-  = Fold (flip step) init finalize
-  where
-    step = either (first . stepL) (second . stepR)
-    init = bipure initL initR
-    finalize = bimap finalizeL finalizeR
-
--- * Transformations
-
-maybe :: Fold a b -> Fold (Maybe a) b
-maybe (Fold step init finalize)
-  = Fold step' init finalize
-  where
-    step' x = Maybe.maybe x (step x)
-
-filter :: (a -> Bool) -> Fold a b -> Fold a b
-filter p = lmap f . maybe
-  where f a = if p a then Just a else Nothing
-
-take :: Integer -> Fold a b -> Fold a b
-take l (Fold step init finalize)
-  = Fold step' (0, init) (finalize.snd)
-    where
-      step' (i, x) a | i < l = (i + 1, step x a)
-                     | otherwise = (i, x)
-
-drop :: Integer -> Fold a b -> Fold a b
-drop l (Fold step init finalize)
-  = Fold step' (0, init) (finalize.snd)
-    where
-      step' (i, x) a | i < l = (i + 1, x)
-                     | otherwise = (i, step x a)
+run :: Foldable g => Fold f a b -> g a -> f b
+run (Fold i f s) as = s $ foldl f i as
 
 -- * Folds
 
-concat :: (Monoid a, Serialize a) => Fold a a
-concat = fold mappend mempty
+concat :: (Applicative f, Monoid a) => Fold f a a
+concat = fold mappend (pure mempty)
 
-head :: Serialize a => Fold1 a a
+head :: (Alternative f) => Fold f a a
 head = fold1 const
 
-last :: Serialize a => Fold1 a a
+last :: Alternative f => Fold f a a
 last = fold1 (const id)
 
-and :: Fold Bool Bool
-and = fold (&&) True
+and :: Applicative f => Fold f Bool Bool
+and = fold (&&) (pure True)
 
-or :: Fold Bool Bool
-or = fold (||) False
+or :: Applicative f => Fold f Bool Bool
+or = fold (||) (pure False)
 
-sum :: (Num a, Serialize a) => Fold a a
-sum = fold (+) 0
+sum :: (Applicative f, Num a) => Fold f a a
+sum = fold (+) (pure 0)
 
-product :: (Num a, Serialize a) => Fold a a
-product = fold (*) 1
+product :: (Applicative f, Num a) => Fold f a a
+product = fold (*) (pure 1)
 
-all :: (a -> Bool) -> Fold a Bool
+all :: (Applicative f) => (a -> Bool) -> Fold f a Bool
 all = flip lmap and
 
-any :: (a -> Bool) -> Fold a Bool
+any :: (Applicative f) => (a -> Bool) -> Fold f a Bool
 any = flip lmap or
 
-null :: Fold a Bool
+null :: Applicative f => Fold f a Bool
 null = all (const False)
 
-length :: Fold a Int
+length :: Applicative f => Fold f a Int
 length = lmap (const 1) sum
 
-maximum :: (Ord a, Serialize a) => Fold1 a a
+maximum :: (Alternative f, Ord a) => Fold f a a
 maximum = fold1 max
 
-minimum :: (Ord a, Serialize a) => Fold1 a a
+minimum :: (Alternative f, Ord a) => Fold f a a
 minimum = fold1 min
 
-elem :: Eq a => a -> Fold a Bool
+elem :: (Applicative f, Eq a) => a -> Fold f a Bool
 elem a = any (a==)
 
-notElem :: Eq a => a -> Fold a Bool
-notElem a = all (a/=)-}
+notElem :: (Applicative f, Eq a) => a -> Fold f a Bool
+notElem a = all (a/=)
