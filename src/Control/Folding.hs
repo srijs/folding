@@ -7,7 +7,7 @@ module Control.Folding
   -- ** Step
     Step, inmap, outmap
   -- ** Fold
-  , Fold(..), fold, fold1
+  , Fold(..), fold, fold1, endofold1
   -- ** These
   , These, fromThese, fromEither, fromTuple
   -- * Composition
@@ -90,6 +90,9 @@ fold1 f g = Fold Nothing f' (Maybe.maybe empty pure)
   where f' Nothing a = Just $ g a
         f' (Just b) a = Just $ f b a
 
+endofold1 :: Alternative f => Step a a -> Fold f a a
+endofold1 f = fold1 f id
+
 instance Functor f => Functor (Fold f a) where
   fmap f (Fold i g s) = Fold i g (fmap (fmap f) s)
 
@@ -104,7 +107,7 @@ instance (Foldable f, Alternative f) => Strong (Fold f) where
   first' = first
 
 instance Applicative f => Zip (Fold f a) where
-  zip ld = lmap (\a -> (a, a)) . combine ld
+  zip ld = lmap (\a -> bipure a a) . combine ld
 
 instance Applicative f => Pointed (Fold f a) where
   point b = Fold () (\_ _ -> ()) (const $ pure b)
@@ -123,7 +126,7 @@ instance Foldable f => Semigroupoid (Fold f) where
           u = snd . bimap s t
 
 instance (Alternative f, Foldable f) => Category (Fold f) where
-  id = fold1 (const id) id
+  id = arr id
   (.) = o
 
 instance (Alternative f, Foldable f) => Arrow (Fold f) where
