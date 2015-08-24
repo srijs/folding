@@ -164,11 +164,15 @@ choose fa fb = lmap fromEither (these fa fb)
 
 -- * Running
 
+-- | Run the fold against a foldable data structure,
+--   and return the result.
 run :: Foldable g => Fold f a b -> g a -> f b
-run (Fold i f s) as = s $ foldl f i as
+run (Fold i f s) = s . foldl f i
 
+-- | Run the fold against a foldable data structure,
+--   and return all immediate results.
 scan :: Foldable g => Fold f a b -> g a -> [f b]
-scan (Fold i f s) as = map s $ scanl f i $ toList as
+scan (Fold i f s) = map s . scanl f i . toList
 
 -- * Folds
 
