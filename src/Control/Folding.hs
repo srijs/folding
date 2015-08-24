@@ -7,7 +7,7 @@ module Control.Folding
   -- ** Step
     Step, inmap, outmap
   -- ** Fold
-  , Fold(..), fold, fold1, endofold1
+  , Fold(..), fold, foldM, fold1, endofold1
   -- ** These
   , These, fromThese, fromEither, fromTuple
   -- * Composition
@@ -82,14 +82,25 @@ fromTuple = uncurry bipure
 data Fold f a b where
   Fold :: x -> Step a x -> (x -> f b) -> Fold f a b
 
+-- | Constructs a fold from a step function and an initial element.
 fold :: Applicative f => Step a b -> b -> Fold f a b
 fold f b = Fold b f pure
 
+-- | Constructs a fold from a monadic step function and a monadic initial element.
+foldM :: Monad m => (b -> a -> m b) -> m b -> Fold m a b
+foldM f b = Fold b (\m a -> m >>= flip f a) id
+
+-- | Constructs a fold from a step function and a morphism.
+--   The fold will produce @'empty'@ until it is fed with
+--   the first @a@.
 fold1 :: Alternative f => Step a b -> (a -> b) -> Fold f a b
 fold1 f g = Fold Nothing f' (Maybe.maybe empty pure)
   where f' Nothing a = Just $ g a
         f' (Just b) a = Just $ f b a
 
+-- | Constructs a fold from a step function.
+--   The fold will produce @'empty'@ until it is fed with
+--   the first @a@.
 endofold1 :: Alternative f => Step a a -> Fold f a a
 endofold1 f = fold1 f id
 
